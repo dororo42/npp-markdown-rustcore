@@ -1,0 +1,20 @@
+[package]
+name = "rustrender-native"
+description = "Native cdylib outlet of rustrender-core for C# P/Invoke (route A')"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[lib]
+name = "rustrender"
+# cdylib → rustrender.dll for P/Invoke; rlib → lets in-process FFI tests link.
+crate-type = ["cdylib", "rlib"]
+# Test-only helpers live in tests/; the bench harness is an example target.
+
+[dependencies]
+rustrender-core = { path = "../rustrender-core" }
+
+[[example]]
+name = "bench"
+path = "examples/bench.rs"

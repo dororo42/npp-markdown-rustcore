@@ -1,0 +1,35 @@
+# ===== Rust =====
+/target/
+**/*.rs.bk
+cargo-timing*.html
+
+# ===== C# / Visual Studio (fork) =====
+[NppMarkdownPanel]/**/bin/
+[NppMarkdownPanel]/**/obj/
+[NppMarkdownPanel]/packages/
+.vs/
+*.user
+*.suo
+*.lock.json
+*.ide/
+artifacts/
+dist/
+
+# ===== NuGet =====
+*.nupkg
+packages/
+
+# ===== Generated bench samples (deterministic; regenerate via
+# `python bench/generate_samples.py`) =====
+bench/1KB.md
+bench/100KB.md
+bench/1MB.md
+bench/10MB.md
+bench/results.json
+
+# ===== OS / editor noise =====
+.DS_Store
+Thumbs.db
+*.swp
+*~
+.idea/

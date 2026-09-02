@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>NppMarkdownPanel — rustrender (route C)</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { margin: 0; padding: 16px 24px; font: 15px/1.6 -apple-system, "Segoe UI", sans-serif; }
+  #content { max-width: 980px; margin: 0 auto; }
+  pre { padding: 12px; border-radius: 6px; overflow: auto; background: rgba(127,127,127,.08); }
+  code.language-mermaid { display: none; }
+  .mermaid { text-align: center; }
+  /* GitHub-alert classes (comrak alerts extension) */
+  .markdown-alert { border-left: 4px solid; padding: 4px 12px; margin: 12px 0; border-radius: 4px; }
+  .markdown-alert-note     { border-color: #0969da; }
+  .markdown-alert-tip      { border-color: #1a7f37; }
+  .markdown-alert-important{ border-color: #8250df; }
+  .markdown-alert-warning  { border-color: #9a6700; }
+  .markdown-alert-caution  { border-color: #cf222e; }
+  .markdown-alert-title { font-weight: 600; margin: 4px 0; }
+</style>
+<!-- Route-C extras (lazy-loaded by the WebView2 host or via CDN when online):
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/katex@0.16/contrib/auto-render.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/highlight.js@11/lib/highlight.min.js"></script>
+-->
+</head>
+<body>
+<div id="content"><noscript>JavaScript is required for the WASM preview route.</noscript></div>
+<script type="module" src="main.js"></script>
+</body>
+</html>

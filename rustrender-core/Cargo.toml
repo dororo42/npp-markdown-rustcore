@@ -1,0 +1,33 @@
+[package]
+name = "rustrender-core"
+description = "Shared Markdown rendering core: comrak + ammonia + syntect (feature-gated)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+comrak = { version = "0.54", default-features = false }
+ammonia = "4.1"
+url = "2.5"
+# Direct dep (only under syntect-onig) so the cached highlighter can use the
+# syntect API; mirrors comrak/syntect-onig's backend choice.
+syntect = { version = "5", optional = true, default-features = false, features = [
+    "parsing",
+    "default-syntaxes",
+    "default-themes",
+    "html",
+    "plist-load",
+    "yaml-load",
+    "dump-load",
+    "regex-onig",
+] }
+
+[features]
+default = ["syntect-onig"]
+# Internal meta-feature: syntax highlighting available at compile time.
+syntax-highlight = []
+# syntect backed by oniguruma (best fidelity, C dependency) — native builds.
+syntect-onig = ["comrak/syntect-onig", "syntax-highlight", "dep:syntect"]
+# (Phase-4 experiment: a pure-Rust `syntect-fancy` variant is deferred; the
+# WASM route ships without syntect and highlights via highlight.js.)

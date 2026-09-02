@@ -1,0 +1,40 @@
+# Default: LF in the repo, native on checkout.
+* text=auto
+
+# Rust
+*.rs text diff=rust
+Cargo.toml text
+Cargo.lock text
+
+# C# / .NET (fork inherits Windows conventions)
+*.cs text diff=csharp
+*.csproj text
+*.sln text eol=crlf
+*.config text
+*.resx text
+
+# Scripts
+*.ps1 text eol=crlf
+*.sh text eol=lf
+*.py text
+*.js text
+*.html text
+*.css text
+
+# Docs
+*.md text
+LICENSE text
+
+# Binaries (never touch)
+*.dll binary
+*.exe binary
+*.wasm binary
+*.png binary
+*.ico binary
+*.zip binary
+
+# linguist: keep the Rust/C# mix honest, mark generated code
+web/bindings/*.js linguist-generated
+web/bindings/*.d.ts linguist-generated
+web/bindings/*.wasm linguist-generated
+NppMarkdownPanel/** linguist-language=C#
