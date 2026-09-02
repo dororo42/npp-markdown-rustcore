@@ -55,7 +55,7 @@ namespace RustRenderWrapper
 
         protected override bool ReleaseHandle()
         {
-            FreeHtml(handle);
+            NativeMethods.FreeHtml(handle);
             return true;
         }
     }
