@@ -62,6 +62,16 @@
       <SpecificVersion>False</SpecificVersion>
     </Reference>
     <Reference Include="System" />
+    <!-- Facade assemblies for PCL dependencies (ColorCode.Portable):
+         required when building with FrameworkPathOverride (no VS targeting pack). -->
+    <Reference Include="System.Runtime" />
+    <Reference Include="System.Threading.Tasks" />
+    <Reference Include="System.IO" />
+    <Reference Include="System.Collections" />
+    <Reference Include="System.ObjectModel" />
+    <Reference Include="System.Linq" />
+    <Reference Include="System.Text.RegularExpressions" />
+    <Reference Include="System.Runtime.Extensions" />
     <Reference Include="System.Memory">
       <HintPath>..\packages\System.Memory.4.6.3\lib\net462\System.Memory.dll</HintPath>
       <SpecificVersion>False</SpecificVersion>
