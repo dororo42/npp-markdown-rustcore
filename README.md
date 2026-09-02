@@ -71,6 +71,9 @@ npp-markdown-rustcore/
 
 ## 🚀 快速开始
 
+> 📘 **完整 Windows 构建与安装手册**（含插件目录组装、安装步骤、故障排查表）：
+> [docs/windows-build-guide.md](docs/windows-build-guide.md)
+
 ### Rust 侧
 
 ```bash
