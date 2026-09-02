@@ -77,12 +77,12 @@ jobs:
           mkdir -p artifacts
           cp -r NppMarkdownPanel/NppMarkdownPanel/bin/Release artifacts/plugin-x86 2>/dev/null || true
           cp -r NppMarkdownPanel/NppMarkdownPanel/bin/Release-x64 artifacts/plugin-x64 2>/dev/null || true
-          cp -r NppMarkdownPanel/MarkdigWrapper/bin/Release/*.dll artifacts/plugin-x86/ 2>/dev/null || true
-          cp -r NppMarkdownPanel/MarkdigWrapper/bin/Release/*.dll artifacts/plugin-x64/ 2>/dev/null || true
-          cp -r NppMarkdownPanel/PanelCommon/bin/Release/*.dll artifacts/plugin-x86/ 2>/dev/null || true
-          cp -r NppMarkdownPanel/PanelCommon/bin/Release/*.dll artifacts/plugin-x64/ 2>/dev/null || true
-          cp -r NppMarkdownPanel/Webview2Viewer/bin/Release/*.dll artifacts/plugin-x86/ 2>/dev/null || true
-          cp -r NppMarkdownPanel/Webview2Viewer/bin/Release/*.dll artifacts/plugin-x64/ 2>/dev/null || true
+          # Class libraries use Private=False project references (upstream
+          # makerelease.ps1 collects them manually) — do the same here.
+          for proj in MarkdigWrapper PanelCommon Webview2Viewer RustRenderWrapper; do
+            cp -r NppMarkdownPanel/$proj/bin/Release/*.dll artifacts/plugin-x86/ 2>/dev/null || true
+            cp -r NppMarkdownPanel/$proj/bin/Release/*.dll artifacts/plugin-x64/ 2>/dev/null || true
+          done
           cp -r NppMarkdownPanel/Webview2Viewer/bin/Release/runtimes artifacts/plugin-x86/ 2>/dev/null || true
           cp -r NppMarkdownPanel/Webview2Viewer/bin/Release/runtimes artifacts/plugin-x64/ 2>/dev/null || true
           find artifacts -type f | head -30
