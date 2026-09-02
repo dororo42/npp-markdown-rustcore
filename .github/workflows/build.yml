@@ -1,0 +1,135 @@
+name: build
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  rust:
+    name: Rust core + native DLL (${{ matrix.arch }})
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { target: x86_64-pc-windows-msvc, arch: x64 }
+          - { target: i686-pc-windows-msvc, arch: x86 }
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Build native DLL
+        run: cargo build --release -p rustrender-native --target ${{ matrix.target }}
+
+      - name: Test (host target, once per matrix is fine)
+        if: matrix.arch == 'x64'
+        run: cargo test --release -p rustrender-core -p rustrender-native
+
+      - name: Stage DLL
+        run: |
+          mkdir -p artifacts
+          cp target/${{ matrix.target }}/release/rustrender.dll "artifacts/rustrender.${{ matrix.arch }}.dll"
+          ls -la artifacts
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rustrender-windows-${{ matrix.arch }}
+          path: artifacts/rustrender.${{ matrix.arch }}.dll
+          if-no-files-found: error
+
+  csharp:
+    name: C# plugin (x64 + x86)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Setup NuGet
+        uses: nuget/setup-nuget@v2
+
+      - name: Restore packages
+        run: nuget restore NppMarkdownPanel/NppMarkdownPanel.sln
+
+      - name: Build x64
+        run: msbuild NppMarkdownPanel/NppMarkdownPanel.sln /p:Configuration=Release /p:Platform=x64 /m /v:minimal
+
+      - name: Build x86
+        run: msbuild NppMarkdownPanel/NppMarkdownPanel.sln /p:Configuration=Release /p:Platform=x86 /m /v:minimal
+
+      - name: Stage plugin outputs
+        run: |
+          mkdir -p artifacts/x64 artifacts/x86
+          cp NppMarkdownPanel/NppMarkdownPanel/bin/x64/Release/* artifacts/x64/ 2>/dev/null || true
+          cp NppMarkdownPanel/NppMarkdownPanel/bin/x86/Release/* artifacts/x86/ 2>/dev/null || true
+          echo "--- x64 ---"; ls -la artifacts/x64 || true
+          echo "--- x86 ---"; ls -la artifacts/x86 || true
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: csharp-plugin
+          path: artifacts/
+          if-no-files-found: warn
+
+  package:
+    name: Package release layout
+    runs-on: windows-latest
+    needs: [rust, csharp]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download build outputs
+        uses: actions/download-artifact@v4
+        with:
+          path: downloads/
+
+      - name: Assemble plugin packages
+        run: |
+          set -e
+          mkdir -p dist/x64/NppMarkdownPanel dist/x86/NppMarkdownPanel
+
+          # C# managed assemblies
+          cp downloads/csharp-plugin/x64/NppMarkdownPanel.dll dist/x64/NppMarkdownPanel/
+          cp downloads/csharp-plugin/x64/*.dll dist/x64/NppMarkdownPanel/ 2>/dev/null || true
+          cp downloads/csharp-plugin/x86/NppMarkdownPanel.dll dist/x86/NppMarkdownPanel/
+          cp downloads/csharp-plugin/x86/*.dll dist/x86/NppMarkdownPanel/ 2>/dev/null || true
+
+          # Native renderer per arch
+          cp downloads/rustrender-windows-x64/rustrender.x64.dll dist/x64/NppMarkdownPanel/rustrender.dll
+          cp downloads/rustrender-windows-x86/rustrender.x86.dll dist/x86/NppMarkdownPanel/rustrender.dll
+
+          # CSS themes (upstream resources)
+          cp NppMarkdownPanel/NppMarkdownPanel/style.css dist/x64/NppMarkdownPanel/ 2>/dev/null || true
+          cp NppMarkdownPanel/NppMarkdownPanel/style-dark.css dist/x64/NppMarkdownPanel/ 2>/dev/null || true
+          cp NppMarkdownPanel/NppMarkdownPanel/style.css dist/x86/NppMarkdownPanel/ 2>/dev/null || true
+          cp NppMarkdownPanel/NppMarkdownPanel/style-dark.css dist/x86/NppMarkdownPanel/ 2>/dev/null || true
+
+          echo "--- dist/x64 ---"; find dist/x64 -type f | head -20
+          echo "--- dist/x86 ---"; find dist/x86 -type f | head -20
+
+      - name: Zip packages
+        run: |
+          cd dist
+          powershell -NoProfile -Command "Compress-Archive -Path x64 -DestinationPath NppMarkdownPanel-rustcore-x64.zip -Force"
+          powershell -NoProfile -Command "Compress-Archive -Path x86 -DestinationPath NppMarkdownPanel-rustcore-x86.zip -Force"
+          ls -la *.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: npp-markdown-rustcore-packages
+          path: dist/*.zip
+          if-no-files-found: error
