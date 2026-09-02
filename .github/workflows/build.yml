@@ -56,34 +56,42 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup MSBuild
-        uses: microsoft/setup-msbuild@v2
-
       - name: Setup NuGet
         uses: nuget/setup-nuget@v2
 
-      - name: Restore packages
-        run: nuget restore NppMarkdownPanel/NppMarkdownPanel.sln
+      - name: Install .NET Framework 4.7.2 reference assemblies
+        run: nuget install Microsoft.NETFramework.ReferenceAssemblies.net472 -Version 1.0.3 -OutputDirectory tools/ra -ExcludeVersion
 
-      - name: Build x64
-        run: msbuild NppMarkdownPanel/NppMarkdownPanel.sln /p:Configuration=Release /p:Platform=x64 /m /v:minimal
+      - name: Install UnmanagedExports.Repack.Upgrade (imported by main csproj, missing from packages.config)
+        run: nuget install Unmanagedexports.Repack.Upgrade -Version 1.2.1 -OutputDirectory NppMarkdownPanel/packages
 
-      - name: Build x86
-        run: msbuild NppMarkdownPanel/NppMarkdownPanel.sln /p:Configuration=Release /p:Platform=x86 /m /v:minimal
+      - name: Build x86 + x64 (plugin solution)
+        shell: pwsh
+        run: |
+          $ra = (Resolve-Path "tools/ra/Microsoft.NETFramework.ReferenceAssemblies.net472/build/.NETFramework/v4.7.2").Path
+          & .\NppMarkdownPanel\build.ps1 -FrameworkPathOverride $ra
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Stage plugin outputs
         run: |
-          mkdir -p artifacts/x64 artifacts/x86
-          cp NppMarkdownPanel/NppMarkdownPanel/bin/x64/Release/* artifacts/x64/ 2>/dev/null || true
-          cp NppMarkdownPanel/NppMarkdownPanel/bin/x86/Release/* artifacts/x86/ 2>/dev/null || true
-          echo "--- x64 ---"; ls -la artifacts/x64 || true
-          echo "--- x86 ---"; ls -la artifacts/x86 || true
+          mkdir -p artifacts
+          cp -r NppMarkdownPanel/NppMarkdownPanel/bin/Release artifacts/plugin-x86 2>/dev/null || true
+          cp -r NppMarkdownPanel/NppMarkdownPanel/bin/Release-x64 artifacts/plugin-x64 2>/dev/null || true
+          cp -r NppMarkdownPanel/MarkdigWrapper/bin/Release/*.dll artifacts/plugin-x86/ 2>/dev/null || true
+          cp -r NppMarkdownPanel/MarkdigWrapper/bin/Release/*.dll artifacts/plugin-x64/ 2>/dev/null || true
+          cp -r NppMarkdownPanel/PanelCommon/bin/Release/*.dll artifacts/plugin-x86/ 2>/dev/null || true
+          cp -r NppMarkdownPanel/PanelCommon/bin/Release/*.dll artifacts/plugin-x64/ 2>/dev/null || true
+          cp -r NppMarkdownPanel/Webview2Viewer/bin/Release/*.dll artifacts/plugin-x86/ 2>/dev/null || true
+          cp -r NppMarkdownPanel/Webview2Viewer/bin/Release/*.dll artifacts/plugin-x64/ 2>/dev/null || true
+          cp -r NppMarkdownPanel/Webview2Viewer/bin/Release/runtimes artifacts/plugin-x86/ 2>/dev/null || true
+          cp -r NppMarkdownPanel/Webview2Viewer/bin/Release/runtimes artifacts/plugin-x64/ 2>/dev/null || true
+          find artifacts -type f | head -30
 
       - uses: actions/upload-artifact@v4
         with:
-          name: csharp-plugin
+          name: npp-markdown-plugin-csharp
           path: artifacts/
-          if-no-files-found: warn
+          if-no-files-found: error
 
   package:
     name: Package release layout
@@ -102,11 +110,11 @@ jobs:
           set -e
           mkdir -p dist/x64/NppMarkdownPanel dist/x86/NppMarkdownPanel
 
-          # C# managed assemblies
-          cp downloads/csharp-plugin/x64/NppMarkdownPanel.dll dist/x64/NppMarkdownPanel/
-          cp downloads/csharp-plugin/x64/*.dll dist/x64/NppMarkdownPanel/ 2>/dev/null || true
-          cp downloads/csharp-plugin/x86/NppMarkdownPanel.dll dist/x86/NppMarkdownPanel/
-          cp downloads/csharp-plugin/x86/*.dll dist/x86/NppMarkdownPanel/ 2>/dev/null || true
+          # C# managed assemblies (x86 / x64 plugin output dirs)
+          cp downloads/npp-markdown-plugin-csharp/plugin-x64/*.dll dist/x64/NppMarkdownPanel/
+          cp -r downloads/npp-markdown-plugin-csharp/plugin-x64/runtimes dist/x64/NppMarkdownPanel/ 2>/dev/null || true
+          cp downloads/npp-markdown-plugin-csharp/plugin-x86/*.dll dist/x86/NppMarkdownPanel/
+          cp -r downloads/npp-markdown-plugin-csharp/plugin-x86/runtimes dist/x86/NppMarkdownPanel/ 2>/dev/null || true
 
           # Native renderer per arch
           cp downloads/rustrender-windows-x64/rustrender.x64.dll dist/x64/NppMarkdownPanel/rustrender.dll
