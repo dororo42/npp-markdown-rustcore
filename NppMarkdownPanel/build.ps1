@@ -12,6 +12,10 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+# Always run from the script's directory (solution root), regardless of the
+# caller's working directory.
+Set-Location $PSScriptRoot
+
 $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
 $msbuildpath = & $vswhere -latest -products * -requires Microsoft.Component.MSBuild -property installationPath
 $msbuild = join-path $msbuildpath 'MSBuild\Current\Bin\MSBuild.exe'
