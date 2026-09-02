@@ -1,6 +1,6 @@
 # NppMarkdownPanel · rustcore
 
-[![build](https://github.com/OWNER/REPO/actions/workflows/build.yml/badge.svg)](./.github/workflows/build.yml)
+[![build](https://github.com/dororo42/npp-markdown-rustcore/actions/workflows/build.yml/badge.svg)](./.github/workflows/build.yml)
 [![license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![rust](https://img.shields.io/badge/rust-1.85%2B-orange.svg)](https://www.rust-lang.org)
 [![comrak](https://img.shields.io/badge/comrak-0.54-green.svg)](https://github.com/kivikakk/comrak)

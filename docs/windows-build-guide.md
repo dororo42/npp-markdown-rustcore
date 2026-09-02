@@ -41,7 +41,7 @@ rustup target add x86_64-pc-windows-msvc i686-pc-windows-msvc
 
 ```powershell
 # 克隆仓库
-git clone https://github.com/<你的用户名>/npp-markdown-rustcore.git
+git clone https://github.com/dororo42/npp-markdown-rustcore.git
 cd npp-markdown-rustcore
 
 # 1) 测试（可选但强烈建议，~1 分钟）
