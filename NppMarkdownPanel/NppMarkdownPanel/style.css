@@ -385,6 +385,13 @@ code, tt {
     font-size: 85%;
 }
 
+/* Inline code inside tables must wrap: narrow cells with long tokens
+   (e.g. file names) otherwise overflow the cell instead of breaking. */
+table code, table tt {
+    white-space: pre-wrap;
+    overflow-wrap: break-word;
+}
+
 pre code {
     margin: 0;
     padding: 0;

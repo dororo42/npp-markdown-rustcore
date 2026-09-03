@@ -17,6 +17,17 @@ namespace Webview2Viewer
     {
         const string virtualHostProtocol = "http://";
         const string virtualHostName = "markdownpanel-virtualhost";
+
+        // Large-document delivery: NavigateToString has a 2 MB htmlContent
+        // cap (Microsoft-documented). A ~1 MB Chinese markdown with syntax
+        // highlighting expands past it and the navigation silently fails
+        // (blank preview). Oversized pages are written to a temp folder and
+        // delivered via a dedicated virtual host instead — the recommended
+        // workaround, which is also faster for huge documents.
+        const int NavigateToStringMaxChars = 750_000;
+        const string tmpVirtualHostName = "markdownpanel-tmp";
+        string tmpHtmlDir;
+        int tmpHtmlFileCounter;
         const string CONFIG_FOLDER_NAME = "MarkdownPanel";
         private Microsoft.Web.WebView2.WinForms.WebView2 webView;
         private bool webViewInitialized = false;
@@ -350,9 +361,45 @@ namespace Webview2Viewer
                 currentStyle = style;
                 ExecuteWebviewAction(new Action(() =>
                 {
-                    webView.NavigateToString(content);
+                    if (content.Length > NavigateToStringMaxChars)
+                        NavigateLargeContentCore(content);
+                    else
+                        webView.NavigateToString(content);
                 }));
             }
+        }
+
+        /// <summary>
+        /// Deliver an oversized page: write it to the temp folder and navigate
+        /// to it via the dedicated virtual host. MUST run on the WebView
+        /// thread (inside ExecuteWebviewAction).
+        /// </summary>
+        private void NavigateLargeContentCore(string content)
+        {
+            if (tmpHtmlDir == null)
+                tmpHtmlDir = Path.Combine(Path.GetTempPath(), "NppMarkdownPanel");
+            Directory.CreateDirectory(tmpHtmlDir);
+
+            var fileName = "preview_" + Interlocked.Increment(ref tmpHtmlFileCounter) + ".html";
+            File.WriteAllText(Path.Combine(tmpHtmlDir, fileName), content);
+
+            // Prune stale preview files (best-effort: locked files are skipped
+            // and retried on the next oversized render).
+            try
+            {
+                foreach (var stale in Directory.GetFiles(tmpHtmlDir, "preview_*.html"))
+                {
+                    if (Path.GetFileName(stale) != fileName)
+                    {
+                        try { File.Delete(stale); } catch (IOException) { } catch (UnauthorizedAccessException) { }
+                    }
+                }
+            }
+            catch (IOException) { }
+
+            webView.CoreWebView2.SetVirtualHostNameToFolderMapping(
+                tmpVirtualHostName, tmpHtmlDir, CoreWebView2HostResourceAccessKind.Allow);
+            webView.CoreWebView2.Navigate("http://" + tmpVirtualHostName + "/" + fileName);
         }
 
         public void SetZoomLevel(int zoomLevel)
@@ -392,8 +439,14 @@ namespace Webview2Viewer
                     var currentPath = Path.GetDirectoryName(currentDocumentPath);
                     navUri = navUri.Replace(virtualHostProtocol + virtualHostName, currentPath);
                     navUri = Uri.UnescapeDataString(navUri);
-                    openLocalFileInNppAction(navUri); 
-                } else
+                    openLocalFileInNppAction(navUri);
+                }
+                else if (navUri.StartsWith("http://" + tmpVirtualHostName + "/"))
+                {
+                    // Internal oversized-preview navigation: neither cancel
+                    // (it is our own delivery path) nor force a full reload.
+                }
+                else
                 {
                     forceFullReload = true;
                 }

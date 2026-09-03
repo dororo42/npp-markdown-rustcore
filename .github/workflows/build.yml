@@ -34,9 +34,18 @@ jobs:
       - name: Build native DLL
         run: cargo build --release -p rustrender-native --target ${{ matrix.target }}
 
-      - name: Test (host target, once per matrix is fine)
+      - name: Format check (rustfmt)
         if: matrix.arch == 'x64'
-        run: cargo test --release -p rustrender-core -p rustrender-native
+        run: cargo fmt --all --check
+
+      - name: Lint (clippy, deny warnings)
+        if: matrix.arch == 'x64'
+        run: cargo clippy --release --all-targets -p rustrender-core -p rustrender-native -- -D warnings
+
+      # Per-target: the FFI contract (usize/pointer width) differs between
+      # x64 and x86 — i686 test binaries run on the x64 runner via WoW64.
+      - name: Test (per-target, x64 + x86)
+        run: cargo test --release -p rustrender-core -p rustrender-native --target ${{ matrix.target }}
 
       - name: Stage DLL
         run: |

@@ -248,9 +248,34 @@ const DATA_LINE: &str = "data-line=\"";
 /// Block tags that receive `data-line` anchors (superset of what the host's
 /// scroll-sync and checkbox callbacks query).
 const ANCHORED_TAGS: &[&str] = &[
-    "h1", "h2", "h3", "h4", "h5", "h6", "div", "p", "li", "blockquote", "pre", "table", "ul",
-    "ol", "dl", "dt", "dd", "td", "th", "tr", "aside", "section", "hr", "input", "a", "img",
-    "code", "span",
+    "h1",
+    "h2",
+    "h3",
+    "h4",
+    "h5",
+    "h6",
+    "div",
+    "p",
+    "li",
+    "blockquote",
+    "pre",
+    "table",
+    "ul",
+    "ol",
+    "dl",
+    "dt",
+    "dd",
+    "td",
+    "th",
+    "tr",
+    "aside",
+    "section",
+    "hr",
+    "input",
+    "a",
+    "img",
+    "code",
+    "span",
 ];
 
 /// Inject `data-line` on every block tag carrying `data-sourcepos="L:..."`,
@@ -298,11 +323,7 @@ pub fn inject_line_anchors(html: &str) -> String {
 /// already_has_data_line))` when this is an open tag whose name is in
 /// `tags`, else `None`. The scan runs to the tag's `>` (quote-aware) to
 /// detect the attributes, but consumes nothing.
-fn scan_open_tag(
-    html: &str,
-    i: usize,
-    tags: &[&str],
-) -> Option<(usize, bool, Option<u64>, bool)> {
+fn scan_open_tag(html: &str, i: usize, tags: &[&str]) -> Option<(usize, bool, Option<u64>, bool)> {
     let bytes = html.as_bytes();
     let n = bytes.len();
     let mut j = i + 1;

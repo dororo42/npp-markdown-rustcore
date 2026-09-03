@@ -8,10 +8,7 @@ use std::time::Instant;
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     let path = args.get(1).map(String::as_str).unwrap_or("bench/100KB.md");
-    let iters: u32 = args
-        .get(2)
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(10);
+    let iters: u32 = args.get(2).and_then(|s| s.parse().ok()).unwrap_or(10);
 
     let md = std::fs::read_to_string(path).unwrap_or_else(|e| {
         eprintln!("cannot read {path}: {e}");
@@ -42,8 +39,9 @@ fn main() {
     let mut worst = 0u128;
     for _ in 0..iters {
         let t0 = Instant::now();
-        let o = rustrender_core::render(&md, None, &rustrender_core::RenderOptions::from_bits(bits))
-            .expect("render");
+        let o =
+            rustrender_core::render(&md, None, &rustrender_core::RenderOptions::from_bits(bits))
+                .expect("render");
         let dt = t0.elapsed().as_micros();
         total += dt;
         worst = worst.max(dt);

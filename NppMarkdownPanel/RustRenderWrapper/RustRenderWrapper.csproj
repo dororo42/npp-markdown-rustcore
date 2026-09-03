@@ -38,9 +38,6 @@
   <ItemGroup>
     <Compile Include="NativeRenderer.cs" />
     <Compile Include="RustMarkdownGenerator.cs" />
-    <Compile Include="ImagePathFixer.cs" />
-    <Compile Include="ThemeManager.cs" />
-    <Compile Include="ScrollingSynchronizer.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <ItemGroup>

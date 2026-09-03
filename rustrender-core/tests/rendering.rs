@@ -132,11 +132,17 @@ fn data_src_line_on_headings_only() {
 
 #[test]
 fn anchors_off_disables_injection() {
-    let mut opts = RenderOptions::default();
-    opts.source_line_anchors = false;
+    let opts = RenderOptions {
+        source_line_anchors: false,
+        ..RenderOptions::default()
+    };
     let out = render("# Hi\n\nBody\n", None, &opts).unwrap();
     assert!(!out.html_body.contains("data-line"), "{}", out.html_body);
-    assert!(!out.html_body.contains("data-sourcepos"), "{}", out.html_body);
+    assert!(
+        !out.html_body.contains("data-sourcepos"),
+        "{}",
+        out.html_body
+    );
     assert!(out.headings.is_empty());
 }
 

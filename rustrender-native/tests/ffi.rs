@@ -37,7 +37,9 @@ fn call(md: &str, cwd: Option<&str>, options: c_uint) -> Result<String, c_int> {
         return Err(rc);
     }
     assert!(!out.is_null(), "success must set out_html");
-    let s = unsafe { CStr::from_ptr(out) }.to_string_lossy().into_owned();
+    let s = unsafe { CStr::from_ptr(out) }
+        .to_string_lossy()
+        .into_owned();
     unsafe { free_html(out) };
     Ok(s)
 }
@@ -138,9 +140,18 @@ fn null_pointers_rejected() {
 
 #[test]
 fn hostile_nesting_does_not_crash() {
-    // 100k-deep nesting must not panic the boundary (worst case: error code).
-    let md = "#".repeat(0) + &"> ".repeat(50_000) + "x";
-    let _ = call(&md, None, 0); // any rc is acceptable; process must survive
+    // 50k-deep blockquote nesting must not panic the boundary: at worst a
+    // contained panic (rc 2), never a process crash. Reaching the assert is
+    // itself the survival proof — a stack overflow would abort the process
+    // before it gets here.
+    let md = "> ".repeat(50_000) + "x";
+    match call(&md, None, 0) {
+        Ok(html) => assert!(html.contains("<p>x</p>") || html.contains("x"), "{html}"),
+        Err(rc) => assert_eq!(rc, 2, "unexpected error code: {rc}"),
+    }
+    // Also survive 100k "#" on one line (hostile ATX heading prefix).
+    let md2 = "#".repeat(100_000) + " x";
+    let _ = call(&md2, None, 0);
 }
 
 #[test]
@@ -155,7 +166,9 @@ fn version_nonempty() {
 fn huge_document_smoke() {
     let mut md = String::with_capacity(1 << 20);
     for i in 0..5000 {
-        md.push_str(&format!("## Section {i}\n\ntext **bold** `code`\n\n| a | b |\n|---|---|\n| 1 | 2 |\n\n"));
+        md.push_str(&format!(
+            "## Section {i}\n\ntext **bold** `code`\n\n| a | b |\n|---|---|\n| 1 | 2 |\n\n"
+        ));
     }
     let html = call(&md, None, OPT_SOURCE_LINE_ANCHORS).unwrap();
     assert!(html.len() > 100_000);

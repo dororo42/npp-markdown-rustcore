@@ -61,7 +61,7 @@ npp-markdown-rustcore/
 ├── rustrender-wasm/            # WASM 出口（无 syntect，前端高亮）
 ├── NppMarkdownPanel/           # fork 自上游 0.9.3（C#）
 │   ├── RustRenderWrapper/      # ★ 新增：NativeRenderer / RustMarkdownGenerator
-│   │                           #   ImagePathFixer / ThemeManager / ScrollingSynchronizer
+│   │                           #   （RustRenderService.CreateGenerator 工厂入口）
 │   └── …（上游原结构：MarkdigWrapper 作为回落保留）
 ├── web/                        # 路线 C 前端（worker/main/preview + bindings）
 ├── bench/                      # 样例生成器 + run.ps1 + bench harness
@@ -146,6 +146,8 @@ cargo run --release -p rustrender-native --example bench -- bench/100KB.md 10
 ```
 
 实测参考（release，含全部特性）：1KB ≈ 0.8ms · 100KB ≈ 45ms · 1MB ≈ 520ms
+> 注：以上为 **core 层基准**（bench 直连 `rustrender_core::render`），不含 FFI
+> worker 队列调度、C# UTF-8 编解码与 WebView2 导航等端到端开销。
 
 ## 🔌 FFI 契约
 

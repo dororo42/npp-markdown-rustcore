@@ -137,6 +137,11 @@ OUTLINE_SCRIPT_PLACEHOLDER
 
         private string htmlContentForExport;
         private string htmlContentForExportWithLightTheme;
+
+        // 渲染缓存 (LRU, 容量 4): 切换回未修改的文档时直接命中, 不再全量重渲染。
+        private const int RenderCacheCapacity = 4;
+        private readonly LinkedList<RenderCacheEntry> renderCacheLru = new LinkedList<RenderCacheEntry>();
+        private readonly Dictionary<RenderCacheKey, LinkedListNode<RenderCacheEntry>> renderCacheMap = new Dictionary<RenderCacheKey, LinkedListNode<RenderCacheEntry>>();
         private string currentMarkdownText;
         private Settings settings;
         private string currentFilePath;
@@ -225,7 +230,7 @@ OUTLINE_SCRIPT_PLACEHOLDER
 
             this.wndProcCallback = wndProcCallback;
             // v4.0 fork: Rust 共享核心优先，rustrender.dll 缺失时自动回落 Markdig。
-            markdownService = new MarkdownService(new RustRenderWrapper.RustMarkdownGenerator());
+            markdownService = new MarkdownService(RustRenderWrapper.RustRenderService.CreateGenerator());
             markdownService.PreProcessorCommandFilename = settings.PreProcessorCommandFilename;
             markdownService.PreProcessorArguments = settings.PreProcessorArguments;
             markdownService.PostProcessorCommandFilename = settings.PostProcessorCommandFilename;
@@ -295,21 +300,35 @@ OUTLINE_SCRIPT_PLACEHOLDER
                 return new RenderResult(invalidExtensionMessage, invalidExtensionMessage, invalidExtensionMessageBody, markdownStyleContent, invalidExtensionMessage);
             }
 
+            // 渲染缓存: 同一 (文档, 文本, 样式, 大纲, 导出策略) 组合直接复用上次结果。
+            var exportNeeded = !string.IsNullOrWhiteSpace(settings.HtmlFileName);
+            var cacheKey = new RenderCacheKey(filepath, currentText, markdownStyleContent, settings.ShowOutline, exportNeeded);
+            var cached = TryGetCachedRender(cacheKey);
+            if (cached != null)
+                return cached;
+
             var resultForBrowser = markdownService.ConvertToHtml(currentText, filepath, true);
-            var resultForExport = markdownService.ConvertToHtml(currentText, null, false);
+            // 导出版惰性渲染: 仅在配置了 HtmlFileName 自动落盘时才随预览一起计算,
+            // 保存/复制路径按需生成 —— 每次渲染成本减半。
+            var resultForExport = exportNeeded ? markdownService.ConvertToHtml(currentText, null, false) : null;
 
             var markdownHtmlBrowser = string.Format(htmlTemplate, Path.GetFileName(filepath), markdownStyleContent, defaultBodyStyle, resultForBrowser);
-            var markdownHtmlFileExport = string.Format(htmlTemplate, Path.GetFileName(filepath), markdownStyleContent, defaultBodyStyle, resultForExport);
-            var markdownHtmlFileExportWithLightTheme = string.Format(htmlTemplate, Path.GetFileName(filepath), GetCssContent(true), defaultBodyStyle, resultForExport);
+            var markdownHtmlFileExport = exportNeeded ? string.Format(htmlTemplate, Path.GetFileName(filepath), markdownStyleContent, defaultBodyStyle, resultForExport) : null;
+            var markdownHtmlFileExportWithLightTheme = exportNeeded ? string.Format(htmlTemplate, Path.GetFileName(filepath), GetCssContent(true), defaultBodyStyle, resultForExport) : null;
 
             if (settings.ShowOutline)
             {
                 markdownHtmlBrowser = InjectOutlineScript(markdownHtmlBrowser);
-                markdownHtmlFileExport = InjectOutlineScript(markdownHtmlFileExport);
-                markdownHtmlFileExportWithLightTheme = InjectOutlineScript(markdownHtmlFileExportWithLightTheme);
+                if (exportNeeded)
+                {
+                    markdownHtmlFileExport = InjectOutlineScript(markdownHtmlFileExport);
+                    markdownHtmlFileExportWithLightTheme = InjectOutlineScript(markdownHtmlFileExportWithLightTheme);
+                }
             }
 
-            return new RenderResult(markdownHtmlBrowser, markdownHtmlFileExport, resultForBrowser, markdownStyleContent, markdownHtmlFileExportWithLightTheme);
+            var renderResult = new RenderResult(markdownHtmlBrowser, markdownHtmlFileExport, resultForBrowser, markdownStyleContent, markdownHtmlFileExportWithLightTheme);
+            StoreCachedRender(cacheKey, renderResult);
+            return renderResult;
         }
 
         private string GetCssContent(bool forceLightTheme = false)
@@ -449,7 +468,11 @@ OUTLINE_SCRIPT_PLACEHOLDER
         {
             if (!string.IsNullOrEmpty(filename))
             {
-                File.WriteAllText(filename, overrideLightTheme ? htmlContentForExportWithLightTheme : htmlContentForExport);
+                // 导出版为惰性渲染时在此按需生成。
+                if (overrideLightTheme)
+                    File.WriteAllText(filename, htmlContentForExportWithLightTheme ?? RenderExportHtml(true));
+                else
+                    File.WriteAllText(filename, htmlContentForExport ?? RenderExportHtml(false));
             }
         }
 
@@ -508,6 +531,7 @@ OUTLINE_SCRIPT_PLACEHOLDER
                 }
                 renderTask = null;
             }
+            ClearRenderCache();
             if (webview2Instance != null)
             {
                 webview2Instance.Dispose();
@@ -526,9 +550,123 @@ OUTLINE_SCRIPT_PLACEHOLDER
             return html.Replace("OUTLINE_SCRIPT_PLACEHOLDER", OUTLINE_SCRIPT);
         }
 
+        /// <summary>
+        /// 惰性导出渲染: 保存/复制时才生成导出版 HTML。
+        /// 日常预览渲染不再为导出版支付每键一份的完整渲染成本。
+        /// </summary>
+        private string RenderExportHtml(bool forceLightTheme)
+        {
+            var htmlTemplate = settings.ShowOutline ? OUTLINE_HTML_BASE : DEFAULT_HTML_BASE;
+            var resultForExport = markdownService.ConvertToHtml(currentMarkdownText, null, false);
+            var html = string.Format(htmlTemplate, Path.GetFileName(currentFilePath), GetCssContent(forceLightTheme), "", resultForExport);
+            if (settings.ShowOutline)
+                html = InjectOutlineScript(html);
+            return html;
+        }
+
+        #region 渲染缓存
+
+        private struct RenderCacheKey : IEquatable<RenderCacheKey>
+        {
+            private readonly string filepath;
+            private readonly string text;
+            private readonly string style;
+            private readonly bool outline;
+            private readonly bool exportNeeded;
+
+            public RenderCacheKey(string filepath, string text, string style, bool outline, bool exportNeeded)
+            {
+                this.filepath = filepath ?? "";
+                this.text = text ?? "";
+                this.style = style ?? "";
+                this.outline = outline;
+                this.exportNeeded = exportNeeded;
+            }
+
+            public bool Equals(RenderCacheKey other)
+            {
+                return outline == other.outline
+                    && exportNeeded == other.exportNeeded
+                    && string.Equals(filepath, other.filepath, StringComparison.Ordinal)
+                    && string.Equals(text, other.text, StringComparison.Ordinal)
+                    && string.Equals(style, other.style, StringComparison.Ordinal);
+            }
+
+            public override bool Equals(object obj)
+            {
+                return obj is RenderCacheKey other && Equals(other);
+            }
+
+            public override int GetHashCode()
+            {
+                unchecked
+                {
+                    var h = 17;
+                    h = h * 31 + StringComparer.Ordinal.GetHashCode(filepath);
+                    h = h * 31 + StringComparer.Ordinal.GetHashCode(text);
+                    h = h * 31 + StringComparer.Ordinal.GetHashCode(style);
+                    h = h * 31 + (outline ? 1 : 0);
+                    h = h * 31 + (exportNeeded ? 1 : 0);
+                    return h;
+                }
+            }
+        }
+
+        private sealed class RenderCacheEntry
+        {
+            public RenderCacheKey Key;
+            public RenderResult Result;
+        }
+
+        private RenderResult TryGetCachedRender(RenderCacheKey key)
+        {
+            lock (renderCacheMap)
+            {
+                if (!renderCacheMap.TryGetValue(key, out var node))
+                    return null;
+                // 命中即提升到 LRU 头部。
+                renderCacheLru.Remove(node);
+                renderCacheLru.AddFirst(node);
+                return node.Value.Result;
+            }
+        }
+
+        private void StoreCachedRender(RenderCacheKey key, RenderResult result)
+        {
+            lock (renderCacheMap)
+            {
+                if (renderCacheMap.TryGetValue(key, out var existing))
+                {
+                    renderCacheLru.Remove(existing);
+                    renderCacheMap.Remove(key);
+                }
+                var node = new LinkedListNode<RenderCacheEntry>(new RenderCacheEntry { Key = key, Result = result });
+                renderCacheLru.AddFirst(node);
+                renderCacheMap[key] = node;
+                while (renderCacheLru.Count > RenderCacheCapacity)
+                {
+                    var last = renderCacheLru.Last;
+                    renderCacheLru.RemoveLast();
+                    renderCacheMap.Remove(last.Value.Key);
+                }
+            }
+        }
+
+        private void ClearRenderCache()
+        {
+            lock (renderCacheMap)
+            {
+                renderCacheMap.Clear();
+                renderCacheLru.Clear();
+            }
+        }
+
+        #endregion
+
         private void btnCopyToClipboard_Click(object sender, EventArgs e)
         {
-            ClipboardHelper.CopyToClipboard(htmlContentForExport, htmlContentForExport);
+            var export = htmlContentForExport ?? RenderExportHtml(false);
+            ClipboardHelper.CopyToClipboard(export, export);
         }
 
         public void ExportToPdf()

@@ -15,8 +15,10 @@
 use std::os::raw::{c_char, c_int};
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::slice;
+use std::sync::mpsc;
+use std::sync::OnceLock;
 
-use rustrender_core::{render as core_render, RenderOptions};
+use rustrender_core::{render as core_render, RenderOptions, RenderOutput};
 
 const RC_OK: c_int = 0;
 const RC_INVALID_INPUT: c_int = 1;
@@ -24,11 +26,75 @@ const RC_PANIC: c_int = 2;
 const RC_RENDER_ERROR: c_int = 3;
 const RC_NULL_POINTER: c_int = 4;
 
+// ---------------------------------------------------------------------------
+// Persistent render worker
+//
+// Panic + stack-overflow isolation (v4.0 requirement): catch_unwind alone
+// cannot stop a stack overflow — deep blockquote/heading nesting recurses
+// inside comrak's formatter (and in AST drop glue). Renders run on a
+// dedicated big-stack worker whose stack is reserved ONCE and reused for
+// every document (the previous design spawned a fresh 512 MiB-stack thread
+// per render: thread create/destroy on every debounced keystroke render, and
+// a 512 MiB address-space reserve that 32-bit hosts cannot afford).
+//
+// Worker stack budget: virtual reserve, only touched pages commit. Debug
+// builds have several-fold larger frames than release, hence the headroom.
+#[cfg(target_pointer_width = "64")]
+const RENDER_STACK_SIZE: usize = 256 * 1024 * 1024;
+#[cfg(target_pointer_width = "32")]
+const RENDER_STACK_SIZE: usize = 64 * 1024 * 1024;
+
+struct RenderJob {
+    md: String,
+    cwd: Option<String>,
+    opts: RenderOptions,
+    tx: mpsc::Sender<RenderOutcome>,
+}
+
+enum RenderOutcome {
+    Done(RenderOutput),
+    Failed,
+    Panicked,
+}
+
+static WORKER_TX: OnceLock<mpsc::Sender<RenderJob>> = OnceLock::new();
+
+/// The persistent render worker handle (spawned lazily on first render).
+/// Panics are contained per job via `catch_unwind`, so one hostile document
+/// cannot take the worker down. A true stack overflow still aborts the
+/// process — that property is unchanged from the per-render-thread design.
+fn worker() -> &'static mpsc::Sender<RenderJob> {
+    WORKER_TX.get_or_init(|| {
+        let (tx, rx) = mpsc::channel::<RenderJob>();
+        std::thread::Builder::new()
+            .stack_size(RENDER_STACK_SIZE)
+            .name("rustrender-worker".to_string())
+            .spawn(move || {
+                for job in rx {
+                    let outcome = match catch_unwind(AssertUnwindSafe(|| {
+                        core_render(&job.md, job.cwd.as_deref(), &job.opts)
+                    })) {
+                        Ok(Ok(output)) => RenderOutcome::Done(output),
+                        Ok(Err(_)) => RenderOutcome::Failed,
+                        Err(_) => RenderOutcome::Panicked,
+                    };
+                    let _ = job.tx.send(outcome);
+                }
+            })
+            .expect("spawn rustrender worker");
+        tx
+    })
+}
+
 /// Build metadata, exposed for diagnostics (shown in the plugin About box).
 #[no_mangle]
 pub extern "C" fn rustrender_version() -> *const c_char {
-    concat!("rustrender ", env!("CARGO_PKG_VERSION"), " (comrak 0.54 / syntect)\0")
-        .as_ptr() as *const c_char
+    concat!(
+        "rustrender ",
+        env!("CARGO_PKG_VERSION"),
+        " (comrak 0.54 / syntect)\0"
+    )
+    .as_ptr() as *const c_char
 }
 
 /// Render Markdown (UTF-8) to sanitized HTML (UTF-8, NUL-terminated).
@@ -74,34 +140,28 @@ pub unsafe extern "C" fn render_markdown(
 
     let opts = RenderOptions::from_bits(options);
 
-    // Panic + stack-overflow isolation (v4.0 requirement).
-    // catch_unwind alone cannot stop a stack overflow — deep blockquote/heading
-    // nesting recurses inside comrak's formatter (and in AST drop glue). The
-    // render runs on a dedicated 512 MiB-stack thread (stack is reserved
-    // virtual memory; only touched pages commit), so hostile documents can at
-    // worst produce an error code — never a host crash. Debug builds have
-    // several-fold larger frames than release, hence the generous budget.
-    const RENDER_STACK_SIZE: usize = 512 * 1024 * 1024;
+    // Hand the job to the persistent worker and wait for the outcome.
+    // The blocking wait is bounded by the render itself; the caller (a
+    // .NET ThreadPool thread) is free while this runs.
+    let (tx, rx) = mpsc::channel();
+    if worker()
+        .send(RenderJob {
+            md: md.to_string(),
+            cwd,
+            opts,
+            tx,
+        })
+        .is_err()
+    {
+        // Worker is gone — treat like a caught panic.
+        return RC_PANIC;
+    }
 
-    let md_owned = md.to_string();
-    let joined = match std::thread::Builder::new()
-        .stack_size(RENDER_STACK_SIZE)
-        .spawn(move || {
-            catch_unwind(AssertUnwindSafe(|| {
-                core_render(&md_owned, cwd.as_deref(), &opts)
-            }))
-        }) {
-        Ok(handle) => handle.join(),
-        // Thread could not be spawned — treat like a caught panic.
-        Err(_) => Err(Box::new("render thread spawn failed")
-            as Box<dyn std::any::Any + Send>),
-    };
-
-    let rendered = match joined {
-        Ok(Ok(Ok(output))) => output,
-        Ok(Ok(Err(_))) => return RC_RENDER_ERROR,
-        // Panic escaped catch_unwind (or the thread could not be spawned).
-        Ok(Err(_)) | Err(_) => return RC_PANIC,
+    let rendered = match rx.recv() {
+        Ok(RenderOutcome::Done(output)) => output,
+        Ok(RenderOutcome::Failed) => return RC_RENDER_ERROR,
+        // A panic was caught inside the worker, or the worker channel broke.
+        Ok(RenderOutcome::Panicked) | Err(_) => return RC_PANIC,
     };
 
     let html = rendered.html_body;

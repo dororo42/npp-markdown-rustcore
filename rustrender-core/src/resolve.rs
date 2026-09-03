@@ -148,8 +148,15 @@ fn normalize_dots(p: &str) -> String {
     for seg in rest.split('/') {
         match seg {
             "" | "." => {}
+            // ".." consumes one directory. When `out` is empty we are at the
+            // root (absolute) or at the base directory itself (relative) —
+            // the root cannot be exceeded, so ".." is dropped there.
+            // NOTE: the previous guard `out.len() > absolute as usize`
+            // treated the `absolute` bool as a segment count and silently
+            // dropped ".." whenever exactly one segment was queued (e.g.
+            // `C:/docs/../img.png` resolved to `C:/docs/img.png`).
             ".." => {
-                if out.len() > absolute as usize {
+                if !out.is_empty() {
                     out.pop();
                 }
             }
@@ -180,6 +187,21 @@ mod tests {
         assert_eq!(r("C:/docs", "img.png"), "file:///C:/docs/img.png");
         assert_eq!(r("C:/docs", "./img/pic.png"), "file:///C:/docs/img/pic.png");
         assert_eq!(r("C:/docs", "sub/../a.md"), "file:///C:/docs/a.md");
+    }
+
+    #[test]
+    fn parent_dir_relative() {
+        // "../" must pop exactly one directory and must never exceed the root.
+        assert_eq!(r("C:/docs", "../img.png"), "file:///C:/img.png");
+        assert_eq!(r("C:/docs", "a/../../img.png"), "file:///C:/img.png");
+        assert_eq!(r("C:/docs/sub", "../../img.png"), "file:///C:/img.png");
+        // ".." past the root is clamped to the root, not mis-resolved.
+        assert_eq!(r("C:/docs", "../../../img.png"), "file:///C:/img.png");
+        // Absolute path with "..": root stays the root.
+        assert_eq!(r("C:/docs", "/a/../x.png"), "file:///C:/x.png");
+        assert_eq!(r("C:/docs", "/../x.png"), "file:///C:/x.png");
+        // Unix base: same semantics.
+        assert_eq!(r("/home/u", "../pic.png"), "file:///home/pic.png");
     }
 
     #[test]

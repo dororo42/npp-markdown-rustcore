@@ -46,7 +46,11 @@ pub fn make_plugins(opts: &RenderOptions) -> Plugins<'_> {
     #[cfg(feature = "syntax-highlight")]
     {
         if opts.highlight {
-            let theme = if opts.dark_mode { DARK_THEME } else { LIGHT_THEME };
+            let theme = if opts.dark_mode {
+                DARK_THEME
+            } else {
+                LIGHT_THEME
+            };
             let adapter: &'static CachedAdapter = adapter_for(theme);
             let mut plugins = Plugins::default();
             plugins.render.codefence_syntax_highlighter = Some(adapter);
@@ -72,8 +76,18 @@ struct CachedAdapter {
     theme: &'static str,
     syntax_set: syntect::parsing::SyntaxSet,
     theme_set: syntect::highlighting::ThemeSet,
-    cache: Mutex<HashMap<u64, String>>,
+    cache: Mutex<HashMap<u64, (ExactKey, String)>>,
     cached_bytes: Mutex<usize>,
+}
+
+/// Exact input identity stored alongside the hash key, so a cache hit can be
+/// verified against the original (lang, code). The 64-bit FNV key alone is
+/// only a fast path — a hash collision must never return a mis-lexed or
+/// mis-themed block. (`theme` is constant per adapter and needs no check.)
+#[cfg(feature = "syntax-highlight")]
+struct ExactKey {
+    lang: Option<String>,
+    code: String,
 }
 
 #[cfg(feature = "syntax-highlight")]
@@ -91,10 +105,7 @@ impl CachedAdapter {
     /// Inline-styled highlight of one code block (theme colors baked in).
     fn highlight_inline(&self, lang: Option<&str>, code: &str) -> Result<String, fmt::Error> {
         use syntect::easy::HighlightLines;
-        use syntect::html::{
-            append_highlighted_html_for_styled_line, IncludeBackground,
-        };
-        use syntect::parsing::SyntaxSet;
+        use syntect::html::{append_highlighted_html_for_styled_line, IncludeBackground};
         use syntect::util::LinesWithEndings;
 
         let syntax = lang
@@ -102,7 +113,10 @@ impl CachedAdapter {
             .unwrap_or_else(|| self.syntax_set.find_syntax_plain_text());
         let theme = &self.theme_set.themes[self.theme];
         let mut highlighter = HighlightLines::new(syntax, theme);
-        let bg = theme.settings.background.unwrap_or(syntect::highlighting::Color::WHITE);
+        let bg = theme
+            .settings
+            .background
+            .unwrap_or(syntect::highlighting::Color::WHITE);
 
         let mut out = String::with_capacity(code.len() * 3 / 2);
         for line in LinesWithEndings::from(code) {
@@ -128,13 +142,20 @@ impl SyntaxHighlighterAdapter for CachedAdapter {
         lang: Option<&str>,
         code: &str,
     ) -> fmt::Result {
-        // Cache key: FNV-1a over (theme, lang, code).
+        // Cache key: FNV-1a over (theme, lang, code) — fast path only. A hit
+        // is verified against the stored exact (lang, code) pair, so a 64-bit
+        // hash collision can never return a wrong block.
         let mut key = fnv1a(self.theme.as_bytes(), 0xcbf2_9ce4_8422_2325);
         key = fnv1a(lang.unwrap_or("").as_bytes(), key);
         key = fnv1a(code.as_bytes(), key);
 
-        if let Some(hit) = self.cache.lock().unwrap().get(&key) {
-            return output.write_str(hit);
+        {
+            let cache = self.cache.lock().unwrap();
+            if let Some((exact, hit)) = cache.get(&key) {
+                if exact.lang.as_deref() == lang && exact.code == code {
+                    return output.write_str(hit);
+                }
+            }
         }
 
         let html = self.highlight_inline(lang, code)?;
@@ -142,12 +163,23 @@ impl SyntaxHighlighterAdapter for CachedAdapter {
         {
             let mut cache = self.cache.lock().unwrap();
             let mut bytes = self.cached_bytes.lock().unwrap();
-            if cache.len() >= CACHE_MAX_ENTRIES || *bytes + html.len() > CACHE_MAX_BYTES {
+            if cache.len() >= CACHE_MAX_ENTRIES
+                || *bytes + html.len() + code.len() > CACHE_MAX_BYTES
+            {
                 cache.clear();
                 *bytes = 0;
             }
-            *bytes += html.len();
-            cache.insert(key, html.clone());
+            *bytes += html.len() + code.len();
+            cache.insert(
+                key,
+                (
+                    ExactKey {
+                        lang: lang.map(str::to_string),
+                        code: code.to_string(),
+                    },
+                    html.clone(),
+                ),
+            );
         }
 
         output.write_str(&html)

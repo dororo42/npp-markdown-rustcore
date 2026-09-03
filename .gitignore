@@ -33,3 +33,8 @@ Thumbs.db
 *.swp
 *~
 .idea/
+
+# ===== AI tool / session artifacts =====
+.trae-html-share-packages/
+.trae/
+.uploads/
