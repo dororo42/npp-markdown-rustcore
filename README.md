@@ -74,6 +74,21 @@ npp-markdown-rustcore/
 > 📘 **完整 Windows 构建与安装手册**（含插件目录组装、安装步骤、故障排查表）：
 > [docs/windows-build-guide.md](docs/windows-build-guide.md)
 
+### 📦 直接安装（二进制包，推荐）
+
+从 [Releases](https://github.com/dororo42/npp-markdown-rustcore/releases)（或 Actions
+工件 `npp-markdown-rustcore-packages`）下载对应架构的 zip：
+
+- `NppMarkdownPanel-rustcore-x64.zip` → 64 位 Notepad++
+- `NppMarkdownPanel-rustcore-x86.zip` → 32 位 Notepad++
+
+zip 根目录即 `NppMarkdownPanel\` 文件夹，**直接解压到 Notepad++ 的 `plugins\` 目录**，
+重启 Notepad++ 即可。
+
+插件支持两种布局：依赖 DLL 平铺在插件根目录，或集中在 `lib\` 子目录
+（AssemblyResolve 双路径探测）。**rustrender.dll 缺失或加载失败时自动回落 Markdig
+管线，功能不丢失**；正常加载时走 Rust 渲染核心（大文档显著提速）。
+
 ### Rust 侧
 
 ```bash
@@ -97,13 +112,19 @@ wasm-bindgen --target web --out-dir web/bindings \
 ### C# 插件（Windows）
 
 ```powershell
-nuget restore NppMarkdownPanel\NppMarkdownPanel.sln
-msbuild NppMarkdownPanel\NppMarkdownPanel.sln /p:Configuration=Release /p:Platform=x64 /m
+# 推荐：一键双平台构建（脚本内置 nuget restore；运行机无 .NET 4.7.2
+#       Targeting Pack 时自动改用 NuGet 参考程序集，用法见脚本头注释）
+powershell -ExecutionPolicy Bypass -File NppMarkdownPanel\build.ps1
+
+# 本地组装发布 zip（含 lib\ 布局与可选 rustrender.dll）
+powershell -ExecutionPolicy Bypass -File NppMarkdownPanel\makerelease.ps1
 ```
 
-安装：将 `NppMarkdownPanel.dll` 与对应架构的 `rustrender.dll` 复制到 Notepad++ 的
-`plugins\NppMarkdownPanel\` 目录，重启即可。**rustrender.dll 缺失时插件自动回落
-Markdig 管线，功能不丢失。**
+安装：执行上述 `makerelease.ps1` 得到 `Release\NppMarkdownPanel-*-x86/x64.zip`，
+解压到 Notepad++ 的 `plugins\` 目录即可。手动组装时将 `NppMarkdownPanel.dll`、
+各类库 `bin\Release\*.dll` 与对应架构的 `rustrender.dll` 放入
+`plugins\NppMarkdownPanel\`。**rustrender.dll 缺失时插件自动回落 Markdig 管线，
+功能不丢失。**
 
 ### 性能基准
 
