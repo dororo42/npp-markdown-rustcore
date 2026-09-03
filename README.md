@@ -89,6 +89,10 @@ zip 根目录即 `NppMarkdownPanel\` 文件夹，**直接解压到 Notepad++ 的
 （AssemblyResolve 双路径探测）。**rustrender.dll 缺失或加载失败时自动回落 Markdig
 管线，功能不丢失**；正常加载时走 Rust 渲染核心（大文档显著提速）。
 
+预览样式基于 GitHub 风格现代化排版：Segoe UI 正文 + Cascadia Mono 代码字体（均为
+Windows 自带，零额外分发）、无边框浮层式行内代码与代码块、柔和表格边框、淡灰引用块、
+GFM alerts 彩色提示框；暗色主题对齐 GitHub Dark（`#0d1117`）色板。
+
 ### Rust 侧
 
 ```bash

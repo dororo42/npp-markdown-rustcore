@@ -19,14 +19,14 @@ SOFTWARE.
 */
 
 body {
-    font-family: Helvetica, arial, sans-serif;
+    font-family: "Segoe UI", "Noto Sans", Tahoma, Helvetica, sans-serif;
     font-size: 14px;
-    line-height: 1.6;
+    line-height: 1.65;
     padding-top: 10px;
     padding-bottom: 10px;
-    background-color: #202020;
+    background-color: #0d1117;
     padding: 30px;
-    color: #CCCCCC;
+    color: #c9d1d9;
     min-width: 250px;
 }
 
@@ -39,9 +39,13 @@ body {
     }
 
 a {
-    color: #BE7C3B;
+    color: #58a6ff;
     text-decoration: none;
 }
+
+    a:hover {
+        text-decoration: underline;
+    }
 
     a.absent {
         color: #33FFFF;
@@ -102,13 +106,13 @@ h1, h2, h3, h4, h5, h6 {
 
 h1 {
     font-size: 28px;
-    color: white;
+    color: #e6edf3;
 }
 
 h2 {
     font-size: 24px;
-    border-bottom: 1px solid #cccccc;
-    color: white;
+    border-bottom: 1px solid #30363d;
+    color: #e6edf3;
 }
 
 h3 {
@@ -132,14 +136,12 @@ p, blockquote, ul, ol, dl, li, table, pre {
     margin: 15px 0;
 }
 
-/*
 hr {
-  border: 0 none;
-  color: #333333;
-  height: 4px;
-  padding: 0;
+    border: 0;
+    height: 1px;
+    background-color: #30363d;
+    margin: 24px 0;
 }
-*/
 body > h2:first-child {
     margin-top: 0;
     padding-top: 0;
@@ -223,9 +225,11 @@ dl {
         }
 
 blockquote {
-    border-left: 4px solid #dddddd;
-    padding: 0 15px;
-    color: #888888;
+    border-left: 4px solid #3b434b;
+    background-color: #161b22;
+    border-radius: 0 4px 4px 0;
+    padding: 4px 15px;
+    color: #8b949e;
 }
 
     blockquote > :first-child {
@@ -241,26 +245,27 @@ table {
   border-collapse: collapse;
 }
 table tr {
-  border-top: 1px solid #cccccc;
-  background-color: black;
+  border-top: 1px solid #30363d;
+  background-color: transparent;
   margin: 0;
   padding: 0;
 }
 
 table tr:nth-child(2n) {
-  background-color: #202834;
+  background-color: #161b22;
 }
 
 table tr th {
-  font-weight: bold;
-  border: 1px solid #cccccc;
+  font-weight: 600;
+  background-color: #161b22;
+  border: 1px solid #30363d;
   text-align: left;
   margin: 0;
   padding: 6px 13px;
 }
 
 table tr td {
-  border: 1px solid #cccccc;
+  border: 1px solid #30363d;
   text-align: left;
   margin: 0;
   padding: 6px 13px;
@@ -278,6 +283,7 @@ img {
     width: auto;
     height: auto;
     max-width: 100%;
+    border-radius: 4px;
 }
 
 span.frame {
@@ -370,11 +376,13 @@ span.float-right {
 
 code, tt {
     margin: 0 2px;
-    padding: 0 5px;
+    padding: .2em .4em;
     white-space: nowrap;
-    border: 1px solid #eaeaea;
-    background-color: #333;
-    border-radius: 3px;
+    border: none;
+    background-color: rgba(110, 118, 129, 0.4);
+    border-radius: 4px;
+    font-family: "Cascadia Mono", Consolas, "Liberation Mono", "Courier New", monospace;
+    font-size: 85%;
 }
 
 pre code {
@@ -383,26 +391,28 @@ pre code {
     white-space: pre;
     border: none;
     background: transparent;
+    font-size: 100%;
 }
 
 .highlight pre {
-    background-color: #333;
-    border: 1px solid #eaeaea;
+    background-color: #161b22;
+    border: 1px solid #30363d;
     font-size: 13px;
-    line-height: 19px;
+    line-height: 1.5;
     overflow: auto;
-    padding: 6px 10px;
-    border-radius: 3px;
+    padding: 12px 16px;
+    border-radius: 6px;
 }
 
 pre {
-    background-color: #333;
-    border: 1px solid #eaeaea;
+    background-color: #161b22;
+    border: 1px solid #30363d;
     font-size: 13px;
-    line-height: 19px;
+    line-height: 1.5;
     overflow: auto;
-    padding: 6px 10px;
-    border-radius: 3px;
+    padding: 12px 16px;
+    border-radius: 6px;
+    font-family: "Cascadia Mono", Consolas, "Liberation Mono", "Courier New", monospace;
 }
 
     pre code, pre tt {
@@ -777,4 +787,28 @@ body.outline-enabled {
 
 .outline-sidebar.collapsed {
     display: none;
+}
+
+/* ---- Modern scrollbar (WebView2 / EdgeHTML) ---- */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+    background-color: rgba(139, 148, 158, 0.4);
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background-color: rgba(139, 148, 158, 0.7);
+}
+
+/* Selection */
+::selection {
+    background-color: rgba(56, 139, 253, 0.4);
 }
