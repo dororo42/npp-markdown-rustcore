@@ -74,14 +74,34 @@ namespace NppMarkdownPanel
 
         private Assembly CurrentDomain_AssemblyResolve(object sender, ResolveEventArgs args)
         {
-            var di = new DirectoryInfo(Path.Combine(PluginUtils.GetPluginDirectory(), "lib"));
-
             var modulename = args.Name.Split(',')[0];
+            var pluginDirectory = PluginUtils.GetPluginDirectory();
 
-            var module = di.GetFiles().FirstOrDefault(i => i.Name == modulename + ".dll");
-            if (module != null)
+            // Probe the upstream "lib" subfolder first, then the plugin root
+            // itself (flat layout). CI zips ship the flat layout, upstream
+            // releases ship lib\ — both deployments must resolve.
+            var probeDirectories = new[]
             {
-                return Assembly.LoadFrom(module.FullName);
+                Path.Combine(pluginDirectory, "lib"),
+                pluginDirectory
+            };
+
+            foreach (var probeDirectory in probeDirectories)
+            {
+                try
+                {
+                    var module = new DirectoryInfo(probeDirectory)
+                        .GetFiles()
+                        .FirstOrDefault(i => i.Name.Equals(modulename + ".dll", StringComparison.OrdinalIgnoreCase));
+                    if (module != null)
+                    {
+                        return Assembly.LoadFrom(module.FullName);
+                    }
+                }
+                catch (Exception)
+                {
+                    // Probe directory may not exist — try the next candidate.
+                }
             }
             return null;
         }

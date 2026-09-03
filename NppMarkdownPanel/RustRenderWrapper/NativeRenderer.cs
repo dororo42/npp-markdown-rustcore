@@ -10,6 +10,8 @@
 // allocated by Rust — the caller MUST free it via FreeHtml.
 
 using System;
+using System.IO;
+using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Text;
 
@@ -65,6 +67,44 @@ namespace RustRenderWrapper
         private const string DllName = "rustrender";
 
         private static readonly byte[] EmptyBytes = new byte[0];
+
+        // .NET Framework P/Invoke never searches the plugin directory for
+        // native DLLs (only the exe dir, system dirs and PATH), so preload
+        // rustrender.dll by absolute path — a later DllImport("rustrender")
+        // then binds to the already-loaded module.
+        static NativeMethods()
+        {
+            try
+            {
+                var assemblyDir = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location) ?? string.Empty;
+                // Flat layout: rustrender.dll sits next to this assembly.
+                // lib\ layout: this assembly is in lib\, rustrender.dll one
+                // level up in the plugin root.
+                var candidates = new[]
+                {
+                    Path.Combine(assemblyDir, "rustrender.dll"),
+                    Path.Combine(assemblyDir, "..", "rustrender.dll")
+                };
+                foreach (var candidate in candidates)
+                {
+                    if (File.Exists(candidate))
+                    {
+                        LoadLibraryEx(Path.GetFullPath(candidate), IntPtr.Zero, LOAD_WITH_ALTERED_SEARCH_PATH);
+                        break;
+                    }
+                }
+            }
+            catch
+            {
+                // Best effort only — Version() reports empty and the caller
+                // falls back to the managed Markdig pipeline.
+            }
+        }
+
+        [DllImport("kernel32", SetLastError = true, CharSet = CharSet.Unicode)]
+        private static extern IntPtr LoadLibraryEx(string lpFileName, IntPtr hFile, uint dwFlags);
+
+        private const uint LOAD_WITH_ALTERED_SEARCH_PATH = 0x00000008;
 
         [DllImport(DllName, EntryPoint = "render_markdown", CallingConvention = CallingConvention.Cdecl)]
         private static extern int RenderMarkdownNative(

@@ -132,8 +132,10 @@ jobs:
       - name: Zip packages
         run: |
           cd dist
-          powershell -NoProfile -Command "Compress-Archive -Path x64 -DestinationPath NppMarkdownPanel-rustcore-x64.zip -Force"
-          powershell -NoProfile -Command "Compress-Archive -Path x86 -DestinationPath NppMarkdownPanel-rustcore-x86.zip -Force"
+          # Zip root = NppMarkdownPanel\ so users can extract straight into
+          # <Notepad++>\plugins\ (the plugin folder itself is inside the zip).
+          powershell -NoProfile -Command "Compress-Archive -Path x64/NppMarkdownPanel -DestinationPath NppMarkdownPanel-rustcore-x64.zip -Force"
+          powershell -NoProfile -Command "Compress-Archive -Path x86/NppMarkdownPanel -DestinationPath NppMarkdownPanel-rustcore-x86.zip -Force"
           ls -la *.zip
 
       - uses: actions/upload-artifact@v4
