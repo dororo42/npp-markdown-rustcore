@@ -3,6 +3,7 @@ using NppMarkdownPanel.Generator;
 using NppMarkdownPanel.Webbrowser;
 using PanelCommon;
 using System;
+using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
 using System.Linq;
