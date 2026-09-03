@@ -67,8 +67,9 @@ namespace Webview2Viewer
                 // 2. 有界等待初始化完成 (最长 2s)
                 initTask?.Wait(TimeSpan.FromSeconds(2));
 
-                // 3. Close() 向浏览器进程族发送关闭 IPC, 随后释放控件本体
-                view.Close();
+                // 3. CoreWebView2.Close() 向浏览器进程发送关闭 IPC (WinForms 控件
+                //    本身无 Close API), 随后释放控件本体
+                view.CoreWebView2?.Close();
                 view.Dispose();
 
                 // 4. 有限泵消息: 浏览器进程退出是异步的, 让关闭 IPC 在宿主
