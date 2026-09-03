@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
 using System.IO;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Web;
 using System.Windows.Forms;
@@ -37,6 +38,9 @@ namespace Webview2Viewer
         private Action<string> openLocalFileInNppAction;
 
         private CoreWebView2Environment environment = null;
+        // EnsureCoreWebView2Async 的任务句柄, Dispose 时有界等待其完成,
+        // 避免初始化进行中销毁控件引发竞态异常
+        private Task initTask;
 
         public Webview2WebbrowserControl()
         {
@@ -45,8 +49,47 @@ namespace Webview2Viewer
 
         public void Dispose()
         {
-            webView?.Dispose();
+            var view = webView;
+            if (view == null) return;
             webView = null;
+            webViewInitialized = false;
+            try
+            {
+                // 1. 先解绑全部事件, 防止关闭/销毁期间回调进入半失效状态
+                view.CoreWebView2InitializationCompleted -= WebView_CoreWebView2InitializationCompleted;
+                view.NavigationStarting -= OnWebBrowser_NavigationStarting;
+                view.NavigationCompleted -= WebView_NavigationCompleted;
+                if (view.CoreWebView2 != null)
+                {
+                    view.CoreWebView2.WebMessageReceived -= WebView_WebMessageReceived;
+                }
+
+                // 2. 有界等待初始化完成 (最长 2s)
+                initTask?.Wait(TimeSpan.FromSeconds(2));
+
+                // 3. Close() 向浏览器进程族发送关闭 IPC, 随后释放控件本体
+                view.Close();
+                view.Dispose();
+
+                // 4. 有限泵消息: 浏览器进程退出是异步的, 让关闭 IPC 在宿主
+                //    退出前送达, 否则 msedgewebview2/crashpad 进程族可能残留
+                //    并继续持有用户数据目录句柄
+                var pumpDeadline = Environment.TickCount + 1500;
+                while (Environment.TickCount < pumpDeadline)
+                {
+                    Application.DoEvents();
+                    Thread.Sleep(50);
+                }
+            }
+            catch (Exception)
+            {
+                // 清理路径尽力而为, 不得向 Notepad++ 抛出异常
+            }
+            finally
+            {
+                environment = null;
+                initTask = null;
+            }
         }
 
         public void Initialize(int zoomLevel, Action<string> openLocalFileInNppAction)
@@ -70,7 +113,8 @@ namespace Webview2Viewer
                         }
 
                         environment = envTask.Result;
-                        webView.EnsureCoreWebView2Async(environment)
+                        initTask = webView.EnsureCoreWebView2Async(environment);
+                        initTask
                             .ContinueWith(ensureTask =>
                             {
                                 if (ensureTask.IsFaulted)

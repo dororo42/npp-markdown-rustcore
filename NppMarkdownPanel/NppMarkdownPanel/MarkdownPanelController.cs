@@ -798,6 +798,10 @@ namespace NppMarkdownPanel
                         _ptrNppTbData = IntPtr.Zero;
                     }
                     previewForm?.Cleanup();
+                    // Cleanup 只停任务/关浏览器; Dispose 才完整释放控件树,
+                    // 否则半销毁的 Form 残留句柄拖到进程终止
+                    previewForm?.Dispose();
+                    previewForm = null;
                 }
 
             }

@@ -496,7 +496,16 @@ OUTLINE_SCRIPT_PLACEHOLDER
             cleanupStarted = true;
             if (renderTask != null)
             {
-                renderTask.Wait();
+                try
+                {
+                    // 有界等待: NPPN_SHUTDOWN 期间大文件渲染不允许无限阻塞宿主退出
+                    // (宿主被拖死 = plugins\ 目录无法替换的直接原因)
+                    renderTask.Wait(TimeSpan.FromSeconds(3));
+                }
+                catch (AggregateException)
+                {
+                    // 渲染任务失败/取消, 直接继续清理
+                }
                 renderTask = null;
             }
             if (webview2Instance != null)
@@ -504,6 +513,12 @@ OUTLINE_SCRIPT_PLACEHOLDER
                 webview2Instance.Dispose();
                 webview2Instance = null;
             }
+            if (webview1Instance != null)
+            {
+                webview1Instance.Dispose();
+                webview1Instance = null;
+            }
+            webbrowserControl = null;
         }
 
         private static string InjectOutlineScript(string html)

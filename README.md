@@ -89,6 +89,13 @@ zip 根目录即 `NppMarkdownPanel\` 文件夹，**直接解压到 Notepad++ 的
 （AssemblyResolve 双路径探测）。**rustrender.dll 缺失或加载失败时自动回落 Markdig
 管线，功能不丢失**；正常加载时走 Rust 渲染核心（大文档显著提速）。
 
+**升级/替换插件时提示"文件夹被占用"**：先完全退出 Notepad++，并在任务管理器确认
+`notepad++.exe` 进程已消失（窗口关闭 ≠ 进程退出，渲染收尾被拖住时进程会短暂存活，
+插件已为收尾路径设置 3 秒超时上限）；若仍有 `msedgewebview2.exe` 残留（命令行包含
+`MarkdownPanel` 的用户数据目录 `--user-data-dir=...\MarkdownPanel\webview2`），可安全
+结束该进程后替换 `plugins\NppMarkdownPanel\`。插件退出时按确定性顺序关闭 WebView2
+（解绑事件 → 有界等初始化 → Close → 有限泵消息），正常情况下不会残留进程。
+
 预览样式基于 GitHub 风格现代化排版：Segoe UI 正文 + Cascadia Mono 代码字体（均为
 Windows 自带，零额外分发）、无边框浮层式行内代码与代码块、柔和表格边框、淡灰引用块、
 GFM alerts 彩色提示框；暗色主题对齐 GitHub Dark（`#0d1117`）色板。
