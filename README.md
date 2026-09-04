@@ -17,7 +17,8 @@
 - **完整 GFM**：表格、任务列表、删除线、自动链接、脚注、描述列表、上标
 - **GitHub Alerts / Obsidian Callout**：`> [!NOTE]` 原生渲染（comrak `alerts`）
 - **Obsidian 双链**：`[[Page|别名]]`（`data-wikilink` 属性供宿主拦截跳转）
-- **代码高亮**：syntect（onig）内联样式 + **进程级代码块缓存**，主题随明暗模式切换
+- **代码高亮**：syntect（onig）内联样式 + **进程级代码块缓存**，配色随预览主题联动
+- **7 套预览主题**：Default（GitHub）/ Obsidian / Nord / Gruvbox / Everforest / Dracula / Catppuccin × 明暗双板，插件菜单即时切换 + ini 持久化
 - **本地图片/链接**：comrak `URLRewriter` 阶段解析为绝对 `file:///` URL（无正则后处理）
 - **安全净化**：ammonia 白名单（默认禁 `data:`/`javascript:`，保留 syntect 受控内联样式）
 - **滚动同步锚点**：全块级 `data-line` + 标题 `data-src-line`（与上游 Webview2 控件契约兼容）
@@ -99,6 +100,13 @@ zip 根目录即 `NppMarkdownPanel\` 文件夹，**直接解压到 Notepad++ 的
 预览样式基于 GitHub 风格现代化排版：Segoe UI 正文 + Cascadia Mono 代码字体（均为
 Windows 自带，零额外分发）、无边框浮层式行内代码与代码块、柔和表格边框、淡灰引用块、
 GFM alerts 彩色提示框；暗色主题对齐 GitHub Dark（`#0d1117`）色板。
+
+**预览主题**（v0.9.3+）：菜单「插件 → MarkdownPanel → Preview theme: …」提供 7 套主题
+——Default（GitHub）/ Obsidian / Nord / Gruvbox / Everforest / Dracula / Catppuccin，每套
+含明/暗双板共 14 组色板；预览样式与代码块高亮由同一组语义化 CSS 变量（30 个 token）驱动，
+切换主题时高亮配色同步联动。点击菜单即刷新预览并持久化到 ini（重启保持）；勾选
+「Follow editor dark mode」时随 Notepad++ 暗色模式在当前主题的明暗板间自动切换；
+`style-themes.css` 缺失时自动回退旧版明暗双样式，与历史版本行为一致。
 
 ### Rust 侧
 
