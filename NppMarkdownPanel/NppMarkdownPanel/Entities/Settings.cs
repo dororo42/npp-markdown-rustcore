@@ -15,7 +15,12 @@ namespace NppMarkdownPanel.Entities
         public const string RENDERING_ENGINE_WEBVIEW1_IE11 = "IE11";
         public const string RENDERING_ENGINE_WEBVIEW2_EDGE = "EDGE";
 
-        public Settings() { RenderingEngine = RENDERING_ENGINE_WEBVIEW2_EDGE; }
+        public Settings()
+        {
+            RenderingEngine = RENDERING_ENGINE_WEBVIEW2_EDGE;
+            PreviewTheme = ThemeCatalog.DefaultKey;
+            FollowDarkMode = true;
+        }
 
         public string CssFileName { get; set; }
         public string CssDarkModeFileName { get; set; }
@@ -23,13 +28,19 @@ namespace NppMarkdownPanel.Entities
         public string HtmlFileName { get; set; }
         public string SupportedFileExt { get; set; }
         public bool SupportFilesWithNoExt { get; set; }
-        public bool AllowAllExtensions { get; set; }        
+        public bool AllowAllExtensions { get; set; }
         public bool IsDarkModeEnabled { get; set; }
         public bool ShowToolbar { get; set; }
         public bool ShowStatusbar { get; set; }
         public bool AutoShowPanel { get; set; }
         public bool EnableThreeStateToggle { get; set; }
         public bool ShowOutline { get; set; }
+
+        /// <summary>Preview color theme key (ThemeCatalog: Default/Obsidian/Nord/...).</summary>
+        public string PreviewTheme { get; set; }
+
+        /// <summary>true → the theme's light/dark board follows the editor dark mode.</summary>
+        public bool FollowDarkMode { get; set; }
 
         public string PreProcessorCommandFilename { get; set; }
         public string PreProcessorArguments { get; set; }

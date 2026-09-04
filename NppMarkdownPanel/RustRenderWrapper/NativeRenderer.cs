@@ -135,7 +135,9 @@ namespace RustRenderWrapper
         /// non-zero return code; panics inside Rust can never crash the host
         /// (code 2) — they surface as exceptions here.
         /// </summary>
-        internal static string RenderMarkdown(string markdown, string documentDir, RenderFlags flags)
+        /// <param name="options">Raw FFI option word: render flags plus the
+        /// syntect highlight theme class in bits 7-9 (v4.0 contract).</param>
+        internal static string RenderMarkdown(string markdown, string documentDir, uint options)
         {
             byte[] md = Encoding.UTF8.GetBytes(markdown);
             byte[] cwd = string.IsNullOrEmpty(documentDir)
@@ -147,7 +149,7 @@ namespace RustRenderWrapper
             int rc = RenderMarkdownNative(
                 md, (UIntPtr)md.LongLength,
                 cwd, (UIntPtr)cwd.LongLength,
-                (uint)flags,
+                options,
                 out htmlPtr, out htmlLen);
 
             if (rc != 0)

@@ -15,9 +15,33 @@ namespace RustRenderWrapper
     /// </summary>
     public static class RustRenderService
     {
+        // Render options are read/written from both the UI thread and the
+        // background render Task (and the export lazy-render path), so all
+        // access goes through this gate; a render always snapshots a
+        // consistent (flags, theme class) pair.
+        private static readonly object OptionsGate = new object();
+        private static RenderFlags _currentFlags = RenderFlags.Defaults;
+
         /// <summary>Flags applied to every native render. The host sets
         /// <see cref="RenderFlags.DarkMode"/> before re-rendering on theme change.</summary>
-        public static RenderFlags CurrentFlags { get; set; } = RenderFlags.Defaults;
+        public static RenderFlags CurrentFlags
+        {
+            get { lock (OptionsGate) { return _currentFlags; } }
+            set { lock (OptionsGate) { _currentFlags = value; } }
+        }
+
+        private static byte _currentThemeClass;
+
+        /// <summary>
+        /// Syntect highlight theme class (FFI bits 7-9): 0 = auto (the legacy
+        /// dark/light pair), 1..=6 pin a palette so code-block colors match the
+        /// preview theme.
+        /// </summary>
+        public static byte CurrentThemeClass
+        {
+            get { lock (OptionsGate) { return _currentThemeClass; } }
+            set { lock (OptionsGate) { _currentThemeClass = value; } }
+        }
 
         /// <summary>True when rustrender.dll loaded successfully.</summary>
         public static bool NativeAvailable { get; }
@@ -35,6 +59,18 @@ namespace RustRenderWrapper
         public static IMarkdownGenerator CreateGenerator()
         {
             return new RustMarkdownGenerator();
+        }
+
+        /// <summary>
+        /// Atomic snapshot of the effective FFI option word: render flags plus
+        /// the highlight theme class encoded in bits 7-9 (v4.0 contract).
+        /// </summary>
+        internal static uint EffectiveOptions()
+        {
+            lock (OptionsGate)
+            {
+                return (uint)_currentFlags | ((uint)_currentThemeClass << 7);
+            }
         }
     }
 
@@ -62,9 +98,9 @@ namespace RustRenderWrapper
 
                     // Route C front-ends handle mermaid/katex; the flags are
                     // forwarded unchanged. Native highlighting bakes the theme
-                    // matching RustRenderService.CurrentFlags.
+                    // matching the flags + theme class snapshot below.
                     return NativeMethods.RenderMarkdown(
-                        markDownText, dir, RustRenderService.CurrentFlags);
+                        markDownText, dir, RustRenderService.EffectiveOptions());
                 }
                 catch (DllNotFoundException)
                 {

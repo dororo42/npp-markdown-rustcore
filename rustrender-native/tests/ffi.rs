@@ -12,6 +12,7 @@ const RC_INVALID_INPUT: c_int = 1;
 const RC_NULL_POINTER: c_int = 4;
 
 const OPT_SOURCE_LINE_ANCHORS: c_uint = 1 << 5;
+const OPT_HIGHLIGHT: c_uint = 1 << 6;
 
 fn call(md: &str, cwd: Option<&str>, options: c_uint) -> Result<String, c_int> {
     let cmd = CString::new(md).unwrap();
@@ -152,6 +153,19 @@ fn hostile_nesting_does_not_crash() {
     // Also survive 100k "#" on one line (hostile ATX heading prefix).
     let md2 = "#".repeat(100_000) + " x";
     let _ = call(&md2, None, 0);
+}
+
+#[test]
+fn highlight_theme_bits_flow_through_ffi() {
+    // Bits 7-9 carry the syntect theme class across the C ABI: 0 = auto
+    // (legacy dark_mode pair), 1..=6 pin a palette. Bit 6 gates highlighting.
+    let md = "```rust\nfn main() { let x = 1; }\n```\n";
+    let auto = call(md, None, OPT_HIGHLIGHT).unwrap();
+    let warm = call(md, None, OPT_HIGHLIGHT | (4 << 7)).unwrap();
+    assert_ne!(auto, warm, "theme class 4 must change highlight HTML");
+    // A pinned warm-light class (2) also differs from the warm dark one (4).
+    let light_warm = call(md, None, OPT_HIGHLIGHT | (2 << 7)).unwrap();
+    assert_ne!(light_warm, warm);
 }
 
 #[test]

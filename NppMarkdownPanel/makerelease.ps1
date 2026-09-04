@@ -16,7 +16,7 @@ Copy-Item -Force -Recurse -Path Webview2Viewer\bin\Release\runtimes\ -Destinatio
 function makeReleaseZip($filename, $targetPlattform, $rustRenderDll)
 {
 	$zipName = "Release\NppMarkdownPanel-" + (Get-Item $filename).VersionInfo.FileVersion + "-" + $targetPlattform + ".zip"
-	$items = @($filename, 'Release\lib\', 'README.md', 'help\', 'License.txt', "NppMarkdownPanel\style.css" , "NppMarkdownPanel\style-dark.css")
+	$items = @($filename, 'Release\lib\', 'README.md', 'help\', 'License.txt', "NppMarkdownPanel\style.css" , "NppMarkdownPanel\style-dark.css", "NppMarkdownPanel\style-themes.css")
 	if ($rustRenderDll -and (Test-Path $rustRenderDll)) { $items += $rustRenderDll }
 	else { Write-Warning "rustrender.dll not found ($rustRenderDll) - packing $zipName without the native renderer (Markdig fallback)." }
 	Compress-Archive -LiteralPath $items -DestinationPath $zipName -Force

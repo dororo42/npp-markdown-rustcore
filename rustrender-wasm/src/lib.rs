@@ -69,8 +69,9 @@ pub fn render_markdown(markdown: &str, options: JsValue) -> Result<JsValue, JsVa
         enable_mermaid: opts.enable_mermaid,
         enable_katex: opts.enable_katex,
         source_line_anchors: opts.source_line_anchors,
-        // WASM builds carry no syntect; highlight flag intentionally ignored.
+        // WASM builds carry no syntect; highlight flags intentionally ignored.
         highlight: false,
+        highlight_theme: 0,
     };
 
     let t0 = js_sys::Date::now();
@@ -114,6 +115,7 @@ pub fn render_markdown_json(markdown: &str, options_json: &str) -> Result<String
         enable_katex: opts.enable_katex,
         source_line_anchors: opts.source_line_anchors,
         highlight: false,
+        highlight_theme: 0,
     };
 
     let out = rustrender_core::render(markdown, None, &core_opts)

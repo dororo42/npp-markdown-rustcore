@@ -282,10 +282,14 @@ OUTLINE_SCRIPT_PLACEHOLDER
 
         private RenderResult RenderHtmlInternal(string currentText, string filepath)
         {
-            // v4.0 fork: 将暗色模式同步给 Rust 渲染核心（syntect 主题随渲染切换）。
+            // v4.0 fork: 将暗色模式 + 预览主题同步给 Rust 渲染核心（syntect
+            // 高亮主题随渲染切换）。主题 class 走 FFI bits 7-9（0 = 旧行为）。
+            var theme = ThemeCatalog.Find(settings.PreviewTheme);
+            var darkTheme = settings.IsDarkModeEnabled && settings.FollowDarkMode;
+            RustRenderWrapper.RustRenderService.CurrentThemeClass = ThemeCatalog.HighlightClass(theme, darkTheme);
             RustRenderWrapper.RustRenderService.CurrentFlags =
                 (RustRenderWrapper.RustRenderService.CurrentFlags & ~RustRenderWrapper.RenderFlags.DarkMode)
-                | (settings.IsDarkModeEnabled ? RustRenderWrapper.RenderFlags.DarkMode : 0);
+                | (darkTheme ? RustRenderWrapper.RenderFlags.DarkMode : 0);
 
             var defaultBodyStyle = "";
             var markdownStyleContent = GetCssContent();
@@ -339,8 +343,22 @@ OUTLINE_SCRIPT_PLACEHOLDER
 
             var assemblyPath = Path.GetDirectoryName(Assembly.GetAssembly(GetType()).Location);
 
-            var defaultCss = settings.IsDarkModeEnabled && !forceLightTheme ? Settings.DefaultDarkModeCssFile : Settings.DefaultCssFile;
-            var customCssFile = settings.IsDarkModeEnabled && !forceLightTheme ? settings.CssDarkModeFileName : settings.CssFileName;
+            // v0.9.3+: 显式选择的预览主题（非 Default）走语义 token 样式表，
+            // ThemeCatalog 注入 :root 变量块；主题部署缺失时回退旧样式。
+            var useDarkTheme = settings.IsDarkModeEnabled && settings.FollowDarkMode && !forceLightTheme;
+            var theme = ThemeCatalog.Find(settings.PreviewTheme);
+            if (!theme.IsDefault)
+            {
+                var themedCss = ThemeCatalog.GenerateCss(theme, useDarkTheme);
+                if (themedCss != null)
+                {
+                    return themedCss;
+                }
+                // fall through to the legacy sheet below
+            }
+
+            var defaultCss = useDarkTheme ? Settings.DefaultDarkModeCssFile : Settings.DefaultCssFile;
+            var customCssFile = useDarkTheme ? settings.CssDarkModeFileName : settings.CssFileName;
             if (File.Exists(customCssFile))
             {
                 cssContent = File.ReadAllText(customCssFile);

@@ -127,6 +127,8 @@ namespace NppMarkdownPanel
             settings.EnableThreeStateToggle = PluginUtils.ReadIniBool("Options", "EnableThreeStateToggle", iniFilePath);
             settings.RenderingEngine = Win32.ReadIniValue("Options", "RenderingEngine", iniFilePath, Settings.RENDERING_ENGINE_WEBVIEW2_EDGE);
             settings.ShowOutline = PluginUtils.ReadIniBool("Options", "ShowOutline", iniFilePath, false);
+            settings.PreviewTheme = ThemeCatalog.Find(Win32.ReadIniValue("Options", "PreviewTheme", iniFilePath, ThemeCatalog.DefaultKey)).Key;
+            settings.FollowDarkMode = PluginUtils.ReadIniBool("Options", "FollowDarkMode", iniFilePath, true);
             return settings;
         }
 
@@ -378,6 +380,10 @@ namespace NppMarkdownPanel
             return p >= 0 && p <= 3 && (text.Substring(p).StartsWith("( )") || text.Substring(p).StartsWith("(x)", StringComparison.OrdinalIgnoreCase));
         }
 
+        // N++ plugin menus are flat (no submenus): the 7 preview theme radio
+        // items + the follow-dark-mode toggle occupy slots 6..13.
+        private const int FirstThemeItemIndex = 6;
+
         public void InitCommandMenu()
         {
             syncViewWithCaretPosition = (Win32.GetPrivateProfileInt("Options", "SyncViewWithCaretPosition", 0, iniFilePath) != 0);
@@ -389,12 +395,54 @@ namespace NppMarkdownPanel
             PluginBase.SetCommand(3, "Synchronize with &first visible line in editor", SyncViewWithFirstVisibleLine, syncViewWithFirstVisibleLine);
             PluginBase.SetCommand(4, "Show &outline", ToggleShowOutline, showOutline);
             PluginBase.SetCommand(5, "---", null);
-            PluginBase.SetCommand(6, "&Settings", EditSettings);
-            PluginBase.SetCommand(7, "&Help", ShowHelp);
-            PluginBase.SetCommand(8, "&About", ShowAboutDialog);
-            PluginBase.SetCommand(9, "---", null);
-            PluginBase.SetCommand(10, "Export to &PDF", ExportToPdf);
+            for (int i = 0; i < ThemeCatalog.Themes.Length; i++)
+            {
+                var themeKey = ThemeCatalog.Themes[i].Key;
+                var isCurrentTheme = string.Equals(ThemeCatalog.Themes[i].Key, settings.PreviewTheme, StringComparison.OrdinalIgnoreCase);
+                PluginBase.SetCommand(FirstThemeItemIndex + i, ThemeCatalog.Themes[i].MenuLabel, () => SelectPreviewTheme(themeKey), isCurrentTheme);
+            }
+            var followDarkModeItem = FirstThemeItemIndex + ThemeCatalog.Themes.Length;
+            PluginBase.SetCommand(followDarkModeItem, "Follow editor &dark mode", ToggleFollowDarkMode, settings.FollowDarkMode);
+            PluginBase.SetCommand(followDarkModeItem + 1, "---", null);
+            var nextItem = followDarkModeItem + 2;
+            PluginBase.SetCommand(nextItem, "&Settings", EditSettings);
+            PluginBase.SetCommand(nextItem + 1, "&Help", ShowHelp);
+            PluginBase.SetCommand(nextItem + 2, "&About", ShowAboutDialog);
+            PluginBase.SetCommand(nextItem + 3, "---", null);
+            PluginBase.SetCommand(nextItem + 4, "Export to &PDF", ExportToPdf);
             idMyDlg = 0;
+        }
+
+        private void SelectPreviewTheme(string themeKey)
+        {
+            var theme = ThemeCatalog.Find(themeKey);
+            if (string.Equals(theme.Key, settings.PreviewTheme, StringComparison.OrdinalIgnoreCase))
+                return;
+            settings.PreviewTheme = theme.Key;
+            SaveSettings();
+            RefreshThemeMenuChecks();
+            if (isPanelVisible) RenderMarkdownDirect();
+        }
+
+        private void ToggleFollowDarkMode()
+        {
+            settings.FollowDarkMode = !settings.FollowDarkMode;
+            SaveSettings();
+            RefreshThemeMenuChecks();
+            if (isPanelVisible) RenderMarkdownDirect();
+        }
+
+        private void RefreshThemeMenuChecks()
+        {
+            var menu = Win32.GetMenu(PluginBase.nppData._nppHandle);
+            for (int i = 0; i < ThemeCatalog.Themes.Length; i++)
+            {
+                var cmdId = PluginBase._funcItems.Items[FirstThemeItemIndex + i]._cmdID;
+                var isChecked = string.Equals(ThemeCatalog.Themes[i].Key, settings.PreviewTheme, StringComparison.OrdinalIgnoreCase);
+                Win32.CheckMenuItem(menu, cmdId, Win32.MF_BYCOMMAND | (isChecked ? Win32.MF_CHECKED : Win32.MF_UNCHECKED));
+            }
+            var followCmdId = PluginBase._funcItems.Items[FirstThemeItemIndex + ThemeCatalog.Themes.Length]._cmdID;
+            Win32.CheckMenuItem(menu, followCmdId, Win32.MF_BYCOMMAND | (settings.FollowDarkMode ? Win32.MF_CHECKED : Win32.MF_UNCHECKED));
         }
 
         private void EditSettings()
@@ -505,6 +553,8 @@ namespace NppMarkdownPanel
             Win32.WriteIniValue("Options", "AllowAllExtensions", settings.AllowAllExtensions.ToString(), iniFilePath);
             Win32.WriteIniValue("Options", "RenderingEngine", settings.RenderingEngine, iniFilePath);
             Win32.WriteIniValue("Options", "ShowOutline", settings.ShowOutline.ToString(), iniFilePath);
+            Win32.WriteIniValue("Options", "PreviewTheme", ThemeCatalog.Find(settings.PreviewTheme).Key, iniFilePath);
+            Win32.WriteIniValue("Options", "FollowDarkMode", settings.FollowDarkMode.ToString(), iniFilePath);
         }
         private void ShowAboutDialog()
         {

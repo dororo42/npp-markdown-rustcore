@@ -49,6 +49,10 @@ pub struct RenderOptions {
     pub source_line_anchors: bool,
     /// Native syntect highlighting (no-op on builds without `syntax-highlight`).
     pub highlight: bool,
+    /// Syntect highlight theme class (FFI bits 7-9). `0` = auto (the legacy
+    /// `dark_mode` pair); `1..=6` pin an explicit theme so hosts can match
+    /// code-block colors to the preview palette (warm palette → warm theme).
+    pub highlight_theme: u8,
 }
 
 impl Default for RenderOptions {
@@ -61,6 +65,7 @@ impl Default for RenderOptions {
             enable_katex: true,
             source_line_anchors: true,
             highlight: true,
+            highlight_theme: 0,
         }
     }
 }
@@ -71,7 +76,8 @@ impl RenderOptions {
         RenderOptions::default()
     }
 
-    /// Bit flags used by the FFI/WASM boundary (bit order = v4.0 contract).
+    /// Bit flags used by the FFI/WASM boundary (bit order = v4.0 contract;
+    /// bits 7-9 = highlight theme class, see `RenderOptions::highlight_theme`).
     pub fn from_bits(bits: u32) -> Self {
         RenderOptions {
             dark_mode: bits & 1 != 0,
@@ -81,6 +87,7 @@ impl RenderOptions {
             enable_katex: bits & (1 << 4) != 0,
             source_line_anchors: bits & (1 << 5) != 0,
             highlight: bits & (1 << 6) != 0,
+            highlight_theme: ((bits >> 7) & 0x7) as u8,
         }
     }
 }

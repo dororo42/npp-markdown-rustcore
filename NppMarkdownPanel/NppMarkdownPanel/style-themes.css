@@ -1,0 +1,828 @@
+/*
+Copyright (c) 2017 Chris Patuzzo
+https://twitter.com/chrispatuzzo
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+Theme-aware stylesheet (v0.9.3+): every colorable value routes through a
+semantic CSS variable. ThemeCatalog.cs injects a `:root { ... }` variable
+block (30 tokens per light/dark board) in front of this file at render time,
+so one structural sheet serves all 7 preview themes. Token list:
+  --bg --fg --heading-fg --fg-muted --link --link-danger
+  --border --surface --table-border --table-row-bg --blockquote-border
+  --inline-code-bg --pre-bg --pre-border
+  --color-note/tip/warning/severe/caution/important
+  --outline-bg --outline-border --outline-hover-bg --outline-hover-fg
+  --outline-active-bg --outline-active-fg --outline-active-border
+  --scrollbar-thumb --scrollbar-thumb-hover --selection-bg
+*/
+
+body {
+    font-family: "Segoe UI", "Noto Sans", Tahoma, Helvetica, sans-serif;
+    font-size: 14px;
+    line-height: 1.65;
+    padding-top: 10px;
+    padding-bottom: 10px;
+    background-color: var(--bg);
+    padding: 30px;
+    color: var(--fg);
+    min-width: 250px;
+}
+
+    body > *:first-child {
+        margin-top: 0 !important;
+    }
+
+    body > *:last-child {
+        margin-bottom: 0 !important;
+    }
+
+a {
+    color: var(--link);
+    text-decoration: none;
+}
+
+    a:hover {
+        text-decoration: underline;
+    }
+
+    a.absent {
+        color: var(--link-danger);
+    }
+
+    a.anchor {
+        display: block;
+        padding-left: 30px;
+        margin-left: -30px;
+        cursor: pointer;
+        position: absolute;
+        top: 0;
+        left: 0;
+        bottom: 0;
+    }
+
+h1, h2, h3, h4, h5, h6 {
+    margin: 20px 0 10px;
+    padding: 0;
+    font-weight: bold;
+    -webkit-font-smoothing: antialiased;
+    cursor: text;
+    position: relative;
+}
+
+    h2:first-child, h1:first-child, h1:first-child + h2, h3:first-child, h4:first-child, h5:first-child, h6:first-child {
+        margin-top: 0;
+        padding-top: 0;
+    }
+
+    h1:hover a.anchor, h2:hover a.anchor, h3:hover a.anchor, h4:hover a.anchor, h5:hover a.anchor, h6:hover a.anchor {
+        text-decoration: none;
+    }
+
+    h1 tt, h1 code {
+        font-size: inherit;
+    }
+
+    h2 tt, h2 code {
+        font-size: inherit;
+    }
+
+    h3 tt, h3 code {
+        font-size: inherit;
+    }
+
+    h4 tt, h4 code {
+        font-size: inherit;
+    }
+
+    h5 tt, h5 code {
+        font-size: inherit;
+    }
+
+    h6 tt, h6 code {
+        font-size: inherit;
+    }
+
+h1 {
+    font-size: 28px;
+    color: var(--heading-fg);
+}
+
+h2 {
+    font-size: 24px;
+    border-bottom: 1px solid var(--border);
+    color: var(--heading-fg);
+}
+
+h3 {
+    font-size: 18px;
+}
+
+h4 {
+    font-size: 16px;
+}
+
+h5 {
+    font-size: 14px;
+}
+
+h6 {
+    color: var(--fg-muted);
+    font-size: 14px;
+}
+
+p, blockquote, ul, ol, dl, li, table, pre {
+    margin: 15px 0;
+}
+
+hr {
+    border: 0;
+    height: 1px;
+    background-color: var(--border);
+    margin: 24px 0;
+}
+body > h2:first-child {
+    margin-top: 0;
+    padding-top: 0;
+}
+
+body > h1:first-child {
+    margin-top: 0;
+    padding-top: 0;
+}
+
+    body > h1:first-child + h2 {
+        margin-top: 0;
+        padding-top: 0;
+    }
+
+body > h3:first-child, body > h4:first-child, body > h5:first-child, body > h6:first-child {
+    margin-top: 0;
+    padding-top: 0;
+}
+
+a:first-child h1, a:first-child h2, a:first-child h3, a:first-child h4, a:first-child h5, a:first-child h6 {
+    margin-top: 0;
+    padding-top: 0;
+}
+
+h1 p, h2 p, h3 p, h4 p, h5 p, h6 p {
+    margin-top: 0;
+}
+
+li p.first {
+    display: inline-block;
+}
+
+ul, ol {
+    padding-left: 30px;
+}
+
+    ul :first-child, ol :first-child {
+        margin-top: 0;
+    }
+
+    ul :last-child, ol :last-child {
+        margin-bottom: 0;
+    }
+
+dl {
+    padding: 0;
+}
+
+    dl dt {
+        font-size: 14px;
+        font-weight: bold;
+        font-style: italic;
+        padding: 0;
+        margin: 15px 0 5px;
+    }
+
+        dl dt:first-child {
+            padding: 0;
+        }
+
+        dl dt > :first-child {
+            margin-top: 0;
+        }
+
+        dl dt > :last-child {
+            margin-bottom: 0;
+        }
+
+    dl dd {
+        margin: 0 0 15px;
+        padding: 0 15px;
+    }
+
+        dl dd > :first-child {
+            margin-top: 0;
+        }
+
+        dl dd > :last-child {
+            margin-bottom: 0;
+        }
+
+blockquote {
+    border-left: 4px solid var(--blockquote-border);
+    background-color: var(--surface);
+    border-radius: 0 4px 4px 0;
+    padding: 4px 15px;
+    color: var(--fg-muted);
+}
+
+    blockquote > :first-child {
+        margin-top: 0;
+    }
+
+    blockquote > :last-child {
+        margin-bottom: 0;
+    }
+
+table {
+  padding: 0;
+  border-collapse: collapse;
+}
+table tr {
+  border-top: 1px solid var(--table-border);
+  background-color: var(--table-row-bg);
+  margin: 0;
+  padding: 0;
+}
+
+table tr:nth-child(2n) {
+  background-color: var(--surface);
+}
+
+table tr th {
+  font-weight: 600;
+  background-color: var(--surface);
+  border: 1px solid var(--table-border);
+  text-align: left;
+  margin: 0;
+  padding: 6px 13px;
+}
+
+table tr td {
+  border: 1px solid var(--table-border);
+  text-align: left;
+  margin: 0;
+  padding: 6px 13px;
+}
+
+table tr th :first-child, table tr td :first-child {
+  margin-top: 0;
+}
+
+table tr th :last-child, table tr td :last-child {
+  margin-bottom: 0;
+}
+
+img {
+    width: auto;
+    height: auto;
+    max-width: 100%;
+    border-radius: 4px;
+}
+
+span.frame {
+    display: block;
+    overflow: hidden;
+}
+
+    span.frame > span {
+        border: 1px solid var(--border);
+        display: block;
+        float: left;
+        overflow: hidden;
+        margin: 13px 0 0;
+        padding: 7px;
+        width: auto;
+    }
+
+    span.frame span img {
+        display: block;
+        float: left;
+    }
+
+    span.frame span span {
+        clear: both;
+        color: var(--fg-muted);
+        display: block;
+        padding: 5px 0 0;
+    }
+
+span.align-center {
+    display: block;
+    overflow: hidden;
+    clear: both;
+}
+
+    span.align-center > span {
+        display: block;
+        overflow: hidden;
+        margin: 13px auto 0;
+        text-align: center;
+    }
+
+    span.align-center span img {
+        margin: 0 auto;
+        text-align: center;
+    }
+
+span.align-right {
+    display: block;
+    overflow: hidden;
+    clear: both;
+}
+
+    span.align-right > span {
+        display: block;
+        overflow: hidden;
+        margin: 13px 0 0;
+        text-align: right;
+    }
+
+    span.align-right span img {
+        margin: 0;
+        text-align: right;
+    }
+
+span.float-left {
+    display: block;
+    margin-right: 13px;
+    overflow: hidden;
+    float: left;
+}
+
+    span.float-left span {
+        margin: 13px 0 0;
+    }
+
+span.float-right {
+    display: block;
+    margin-left: 13px;
+    overflow: hidden;
+    float: right;
+}
+
+    span.float-right > span {
+        display: block;
+        overflow: hidden;
+        margin: 13px auto 0;
+        text-align: right;
+    }
+
+code, tt {
+    margin: 0 2px;
+    padding: .2em .4em;
+    white-space: nowrap;
+    border: none;
+    background-color: var(--inline-code-bg);
+    border-radius: 4px;
+    font-family: "Cascadia Mono", Consolas, "Liberation Mono", "Courier New", monospace;
+    font-size: 85%;
+}
+
+/* Inline code inside tables must wrap: narrow cells with long tokens
+   (e.g. file names) otherwise overflow the cell instead of breaking. */
+table code, table tt {
+    white-space: pre-wrap;
+    overflow-wrap: break-word;
+}
+
+pre code {
+    margin: 0;
+    padding: 0;
+    white-space: pre;
+    border: none;
+    background: transparent;
+    font-size: 100%;
+}
+
+.highlight pre {
+    background-color: var(--pre-bg);
+    border: 1px solid var(--pre-border);
+    font-size: 13px;
+    line-height: 1.5;
+    overflow: auto;
+    padding: 12px 16px;
+    border-radius: 6px;
+}
+
+pre {
+    background-color: var(--pre-bg);
+    border: 1px solid var(--pre-border);
+    font-size: 13px;
+    line-height: 1.5;
+    overflow: auto;
+    padding: 12px 16px;
+    border-radius: 6px;
+    font-family: "Cascadia Mono", Consolas, "Liberation Mono", "Courier New", monospace;
+}
+
+    pre code, pre tt {
+        background-color: transparent;
+        border: none;
+    }
+
+/* Syntax Highlighting (legacy Markdig fallback classes — kept fixed-value:
+   the native Rust route bakes syntect colors inline, so these only matter
+   when the DLL is missing and the fallback pipeline highlights.) */
+
+.plainText {
+    background-color: #FFFFFF;
+    color: #000000;
+}
+
+.htmlServerSideScript {
+    background-color: #FFFF00;
+}
+
+.htmlComment {
+    color: #008000;
+}
+
+.htmlTagDelimiter {
+    color: #0000FF;
+}
+
+.htmlElementName {
+    color: #A31515;
+}
+
+.htmlAttributeName {
+    color: #FF0000;
+}
+
+.htmlAttributeValue {
+    color: #0000FF;
+}
+
+.htmlOperator {
+    color: #0000FF;
+}
+
+.comment {
+    color: #008000;
+}
+
+.xmlDocTag {
+    color: #808080;
+}
+
+.xmlDocComment {
+    color: #008000;
+}
+
+.string {
+    color: #A31515;
+}
+
+.stringCSharpVerbatim {
+    color: #A31515;
+}
+
+.keyword {
+    color: #0000FF;
+}
+
+.preprocessorKeyword {
+    color: #0000FF;
+}
+
+.htmlEntity {
+    color: #FF0000;
+}
+
+.xmlAttribute {
+    color: #FF0000;
+}
+
+.xmlAttributeQuotes {
+    color: #000000;
+}
+
+.xmlAttributeValue {
+    color: #0000FF;
+}
+
+.xmlCDataSection {
+    color: #808080;
+}
+
+.xmlComment {
+    color: #008000;
+}
+
+.xmlDelimiter {
+    color: #0000FF;
+}
+
+.xmlName {
+    color: #A31515;
+}
+
+.className {
+    color: #48D1CC;
+}
+
+.cssSelector {
+    color: #A31515;
+}
+
+.cssPropertyName {
+    color: #FF0000;
+}
+
+.cssPropertyValue {
+    color: #0000FF;
+}
+
+.sqlSystemFunction {
+    color: #FF00FF;
+}
+
+.powershellAttribute {
+    color: #B0E0E6;
+}
+
+.powershellOperator {
+    color: #808080;
+}
+
+.powershellType {
+    color: #008080;
+}
+
+.powershellVariable {
+    color: #FF4500;
+}
+
+.type {
+    color: #008080;
+}
+
+.typeVariable {
+    color: #008080;
+    font-style: italic;
+}
+
+.namespace {
+    color: #000080;
+}
+
+.constructor {
+    color: #800080;
+}
+
+.predefined {
+    color: #000080;
+}
+
+.pseudoKeyword {
+    color: #000080;
+}
+
+.stringEscape {
+    color: #808080;
+}
+
+.controlKeyword {
+    color: #0000FF;
+}
+
+.number {
+}
+
+.operator {
+}
+
+.delimiter {
+}
+
+.markdownHeader {
+    font-weight: bold;
+}
+
+.markdownCode {
+    color: #008080;
+}
+
+.markdownListItem {
+    font-weight: bold;
+}
+
+.italic {
+    font-style: italic;
+}
+
+.bold {
+    font-weight: bold;
+}
+
+/* Styles for github alerts (colors come from the injected :root block) */
+
+.markdown-alert {
+    padding: 0.5rem 1rem;
+    margin-bottom: 16px;
+    color: inherit;
+    border-left: .25em solid var(--fg-muted);
+}
+
+    .markdown-alert > :first-child {
+        margin-top: 0
+    }
+
+    .markdown-alert > :last-child {
+        margin-bottom: 0
+    }
+
+    .markdown-alert .markdown-alert-title {
+        display: flex;
+        font-weight: 500;
+        align-items: center;
+        line-height: 1
+    }
+
+        .markdown-alert .markdown-alert-title svg {
+            margin-right: 0.5rem;
+            display: inline-block;
+            overflow: visible !important;
+            vertical-align: text-bottom;
+            fill: currentColor;
+        }
+
+    .markdown-alert.markdown-alert-note {
+        border-left-color: var(--color-note);
+    }
+
+        .markdown-alert.markdown-alert-note .markdown-alert-title {
+            color: var(--color-note);
+        }
+
+    .markdown-alert.markdown-alert-important {
+        border-left-color: var(--color-important);
+    }
+
+        .markdown-alert.markdown-alert-important .markdown-alert-title {
+            color: var(--color-important);
+        }
+
+    .markdown-alert.markdown-alert-warning {
+        border-left-color: var(--color-warning);
+    }
+
+        .markdown-alert.markdown-alert-warning .markdown-alert-title {
+            color: var(--color-warning);
+        }
+
+    .markdown-alert.markdown-alert-tip {
+        border-left-color: var(--color-tip);
+    }
+
+        .markdown-alert.markdown-alert-tip .markdown-alert-title {
+            color: var(--color-tip);
+        }
+
+    .markdown-alert.markdown-alert-caution {
+        border-left-color: var(--color-caution);
+    }
+
+        .markdown-alert.markdown-alert-caution .markdown-alert-title {
+            color: var(--color-caution);
+        }
+
+/* Outline sidebar */
+
+body.outline-enabled {
+    display: flex;
+    padding: 0;
+    margin: 0;
+}
+
+.outline-sidebar {
+    width: 220px;
+    min-width: 220px;
+    height: 100vh;
+    overflow-y: auto;
+    border-right: 1px solid var(--outline-border);
+    background-color: var(--outline-bg);
+    position: sticky;
+    top: 0;
+}
+
+.outline-header {
+    padding: 10px 42px;
+    font-weight: 600;
+    font-size: 13px;
+    color: var(--fg-muted);
+    border-bottom: 1px solid var(--outline-border);
+    position: sticky;
+    top: 0;
+    background-color: var(--outline-bg);
+    z-index: 1;
+}
+
+.outline-content {
+    padding: 8px 0;
+}
+
+.outline-item {
+    display: block;
+    padding: 4px 12px;
+    font-size: 12px;
+    line-height: 1.4;
+    color: var(--fg-muted);
+    text-decoration: none;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    cursor: pointer;
+    border-left: 2px solid transparent;
+}
+
+.outline-item:hover {
+    color: var(--outline-hover-fg);
+    background-color: var(--outline-hover-bg);
+}
+
+.outline-item.active {
+    color: var(--outline-active-fg);
+    background-color: var(--outline-active-bg);
+    border-left-color: var(--outline-active-border);
+    font-weight: 600;
+}
+
+.outline-l1 { padding-left: 12px; font-weight: 600; font-size: 13px; }
+.outline-l2 { padding-left: 24px; }
+.outline-l3 { padding-left: 36px; }
+.outline-l4 { padding-left: 48px; }
+.outline-l5 { padding-left: 60px; }
+.outline-l6 { padding-left: 72px; }
+
+.outline-main {
+    flex: 1;
+    min-width: 0;
+    padding: 30px;
+}
+
+.outline-toggle {
+    position: fixed;
+    top: 8px;
+    left: 8px;
+    z-index: 10;
+    background: var(--outline-bg);
+    border: 1px solid var(--outline-border);
+    border-radius: 4px;
+    padding: 4px 8px;
+    font-size: 14px;
+    cursor: pointer;
+    line-height: 1;
+    color: var(--fg-muted);
+}
+
+.outline-toggle:hover {
+    background: var(--outline-hover-bg);
+}
+
+.outline-sidebar.collapsed {
+    display: none;
+}
+
+/* ---- Modern scrollbar (WebView2 / EdgeHTML) ---- */
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+    background-color: var(--scrollbar-thumb);
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background-color: var(--scrollbar-thumb-hover);
+}
+
+/* Selection */
+::selection {
+    background-color: var(--selection-bg);
+}

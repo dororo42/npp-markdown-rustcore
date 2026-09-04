@@ -267,3 +267,51 @@ fn absolute_urls_untouched() {
     assert!(h.contains("href=\"mailto:a@b.c\""), "{h}");
     assert!(h.contains("href=\"#sec\""), "{h}");
 }
+
+// ------------------------------------------------------- highlight theming
+
+#[test]
+fn from_bits_parses_highlight_theme_class() {
+    // bits 7-9 carry the syntect theme class; 0 = auto (legacy pair).
+    assert_eq!(RenderOptions::from_bits(0).highlight_theme, 0);
+    assert_eq!(RenderOptions::from_bits(1).highlight_theme, 0);
+    assert_eq!(RenderOptions::from_bits(1 << 7).highlight_theme, 1);
+    assert_eq!(RenderOptions::from_bits(6 << 7).highlight_theme, 6);
+    assert_eq!(RenderOptions::from_bits(7 << 7).highlight_theme, 7);
+    // bits beyond the class field must not leak into it.
+    assert_eq!(RenderOptions::from_bits(1 << 10).highlight_theme, 0);
+}
+
+#[test]
+fn highlight_theme_class_selects_palette() {
+    // An explicit class (warm dark = base16-eighties) must render code
+    // blocks with different inline colors than the default light pair.
+    let md = "```rust\nfn main() { let x = 1; }\n```\n";
+    let warm = RenderOptions {
+        highlight_theme: 4,
+        ..RenderOptions::default()
+    };
+    let a = render(md, None, &RenderOptions::default())
+        .unwrap()
+        .html_body;
+    let b = render(md, None, &warm).unwrap().html_body;
+    assert_ne!(a, b);
+}
+
+#[test]
+fn highlight_theme_auto_matches_legacy_dark_pair() {
+    // Class 0 + dark_mode must equal explicitly pinning class 3
+    // (both resolve to base16-ocean.dark).
+    let md = "```rust\nfn main() {}\n```\n";
+    let auto_dark = RenderOptions {
+        dark_mode: true,
+        ..RenderOptions::default()
+    };
+    let pinned = RenderOptions {
+        highlight_theme: 3,
+        ..RenderOptions::default()
+    };
+    let a = render(md, None, &auto_dark).unwrap().html_body;
+    let b = render(md, None, &pinned).unwrap().html_body;
+    assert_eq!(a, b);
+}

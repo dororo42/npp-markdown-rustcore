@@ -24,11 +24,18 @@ use comrak::options::Plugins;
 
 use crate::RenderOptions;
 
-/// Theme selection (syntect default theme set).
+/// The six pinnable syntect themes, indexed by FFI highlight class 1..=6.
+/// Classes 1 (InspiredGitHub) and 3 (base16-ocean.dark) are the legacy
+/// auto light/dark pair; class 0 (auto) resolves to one of those two.
 #[cfg(feature = "syntax-highlight")]
-const LIGHT_THEME: &str = "InspiredGitHub";
-#[cfg(feature = "syntax-highlight")]
-const DARK_THEME: &str = "base16-ocean.dark";
+const THEME_CLASSES: [&str; 6] = [
+    "InspiredGitHub",       // 1 — neutral light (Obsidian/Catppuccin light)
+    "Solarized (light)",    // 2 — warm light (Gruvbox/Everforest light)
+    "base16-ocean.dark",    // 3 — cool dark (Obsidian/Nord/Catppuccin dark)
+    "base16-eighties.dark", // 4 — warm dark (Gruvbox)
+    "base16-mocha.dark",    // 5 — warm purple dark (Dracula)
+    "Solarized (dark)",     // 6 — green-tinted dark (Everforest)
+];
 
 /// Cache guards: entry count / approximate total bytes of cached HTML.
 #[cfg(feature = "syntax-highlight")]
@@ -46,12 +53,7 @@ pub fn make_plugins(opts: &RenderOptions) -> Plugins<'_> {
     #[cfg(feature = "syntax-highlight")]
     {
         if opts.highlight {
-            let theme = if opts.dark_mode {
-                DARK_THEME
-            } else {
-                LIGHT_THEME
-            };
-            let adapter: &'static CachedAdapter = adapter_for(theme);
+            let adapter: &'static CachedAdapter = adapter_for(theme_class(opts));
             let mut plugins = Plugins::default();
             plugins.render.codefence_syntax_highlighter = Some(adapter);
             return plugins;
@@ -62,13 +64,29 @@ pub fn make_plugins(opts: &RenderOptions) -> Plugins<'_> {
     Plugins::default()
 }
 
+/// Resolve the syntect theme class for a render: an explicit class
+/// (`opts.highlight_theme` in 1..=6, set from FFI bits 7-9) pins the theme
+/// so code-block colors follow the preview palette; class 0 keeps the
+/// legacy behavior where `dark_mode` picks the light/dark pair.
 #[cfg(feature = "syntax-highlight")]
-fn adapter_for(theme: &'static str) -> &'static CachedAdapter {
-    static LIGHT: OnceLock<CachedAdapter> = OnceLock::new();
-    static DARK: OnceLock<CachedAdapter> = OnceLock::new();
+fn theme_class(opts: &RenderOptions) -> usize {
+    match opts.highlight_theme {
+        1..=6 => opts.highlight_theme as usize,
+        _ => {
+            if opts.dark_mode {
+                3 // DARK_THEME == THEME_CLASSES[2]
+            } else {
+                1 // LIGHT_THEME == THEME_CLASSES[0]
+            }
+        }
+    }
+}
 
-    let cell = if theme == DARK_THEME { &DARK } else { &LIGHT };
-    cell.get_or_init(|| CachedAdapter::new(theme))
+#[cfg(feature = "syntax-highlight")]
+fn adapter_for(class: usize) -> &'static CachedAdapter {
+    static CELLS: [OnceLock<CachedAdapter>; 6] = [const { OnceLock::new() }; 6];
+    let idx = (class - 1) % THEME_CLASSES.len();
+    CELLS[idx].get_or_init(|| CachedAdapter::new(THEME_CLASSES[idx]))
 }
 
 #[cfg(feature = "syntax-highlight")]
