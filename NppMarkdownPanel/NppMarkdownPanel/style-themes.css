@@ -24,7 +24,9 @@ so one structural sheet serves all 7 preview themes. Token list:
   --bg --fg --heading-fg --fg-muted --link --link-danger
   --border --surface --table-border --table-row-bg --blockquote-border
   --inline-code-bg --pre-bg --pre-border
-  --color-note/tip/warning/severe/caution/important
+  --color-note/tip/warning/caution/important
+  (--color-severe is also injected but reserved: GitHub alerts have no
+   "severe" class, so no rule consumes it)
   --outline-bg --outline-border --outline-hover-bg --outline-hover-fg
   --outline-active-bg --outline-active-fg --outline-active-border
   --scrollbar-thumb --scrollbar-thumb-hover --selection-bg
@@ -34,8 +36,6 @@ body {
     font-family: "Segoe UI", "Noto Sans", Tahoma, Helvetica, sans-serif;
     font-size: 14px;
     line-height: 1.65;
-    padding-top: 10px;
-    padding-bottom: 10px;
     background-color: var(--bg);
     padding: 30px;
     color: var(--fg);

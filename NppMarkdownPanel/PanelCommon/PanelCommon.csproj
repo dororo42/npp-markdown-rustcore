@@ -37,6 +37,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="IMarkdownGenerator.cs" />
+    <Compile Include="INativeOptionsGenerator.cs" />
     <Compile Include="IWebbrowserControl.cs" />
 		<Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>

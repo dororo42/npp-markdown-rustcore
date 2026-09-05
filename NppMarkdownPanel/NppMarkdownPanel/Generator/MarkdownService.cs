@@ -33,6 +33,23 @@ namespace NppMarkdownPanel.Generator
             return executeExternalProcessor(PostProcessorCommandFilename, PostProcessorArguments, html);
         }
 
+        /// <summary>
+        /// Convert with an explicit native option word (flags bits 0-6 +
+        /// highlight class bits 7-9). Export paths use this to bake e.g. the
+        /// light syntect theme into the body without touching the shared
+        /// preview snapshot. Generators without native options (Markdig
+        /// fallback) ignore the word and render as usual.
+        /// </summary>
+        public string ConvertToHtml(string markDownText, string filepath, bool supportEscapeCharsInUris, uint nativeOptions)
+        {
+            var input = executeExternalProcessor(PreProcessorCommandFilename, PreProcessorArguments, markDownText);
+            var optionsGenerator = markdownGenerator as INativeOptionsGenerator;
+            var html = optionsGenerator != null
+                ? optionsGenerator.ConvertToHtmlWithOptions(input, filepath, supportEscapeCharsInUris, nativeOptions)
+                : markdownGenerator.ConvertToHtml(input, filepath, supportEscapeCharsInUris);
+            return executeExternalProcessor(PostProcessorCommandFilename, PostProcessorArguments, html);
+        }
+
         private string executeExternalProcessor(string commandFilename, string arguments, string input)
         {
             string result = input;

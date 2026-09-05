@@ -104,9 +104,10 @@ GFM alerts 彩色提示框；暗色主题对齐 GitHub Dark（`#0d1117`）色板
 **预览主题**（v0.9.3+）：菜单「插件 → MarkdownPanel → Preview theme: …」提供 7 套主题
 ——Default（GitHub）/ Obsidian / Nord / Gruvbox / Everforest / Dracula / Catppuccin，每套
 含明/暗双板共 14 组色板；预览样式与代码块高亮由同一组语义化 CSS 变量（30 个 token）驱动，
-切换主题时高亮配色同步联动。点击菜单即刷新预览并持久化到 ini（重启保持）；勾选
-「Follow editor dark mode」时随 Notepad++ 暗色模式在当前主题的明暗板间自动切换；
-`style-themes.css` 缺失时自动回退旧版明暗双样式，与历史版本行为一致。
+切换主题时高亮配色同步联动。点击菜单即刷新预览并持久化到 ini（重启保持）；明暗板由
+「Preview dark mode」三态单选控制——Auto（随 Notepad++ 暗色模式自动切换）/ Force light /
+Force dark，亮色编辑器下也可手动预览暗色板；`style-themes.css` 缺失时自动回退旧版明暗
+双样式，与历史版本行为一致。
 
 ### Rust 侧
 

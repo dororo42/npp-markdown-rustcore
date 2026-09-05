@@ -137,7 +137,6 @@ OUTLINE_SCRIPT_PLACEHOLDER
         private int renderGeneration;
 
         private string htmlContentForExport;
-        private string htmlContentForExportWithLightTheme;
 
         // 渲染缓存 (LRU, 容量 4): 切换回未修改的文档时直接命中, 不再全量重渲染。
         private const int RenderCacheCapacity = 4;
@@ -284,12 +283,15 @@ OUTLINE_SCRIPT_PLACEHOLDER
         {
             // v4.0 fork: 将暗色模式 + 预览主题同步给 Rust 渲染核心（syntect
             // 高亮主题随渲染切换）。主题 class 走 FFI bits 7-9（0 = 旧行为）。
+            // flags + class 经 SetOptions 单锁原子写入（消除两次赋值间的撕裂
+            // 窗口）；预览快照字同时作为渲染缓存 key 的一部分。
             var theme = ThemeCatalog.Find(settings.PreviewTheme);
-            var darkTheme = settings.IsDarkModeEnabled && settings.FollowDarkMode;
-            RustRenderWrapper.RustRenderService.CurrentThemeClass = ThemeCatalog.HighlightClass(theme, darkTheme);
-            RustRenderWrapper.RustRenderService.CurrentFlags =
-                (RustRenderWrapper.RustRenderService.CurrentFlags & ~RustRenderWrapper.RenderFlags.DarkMode)
+            var darkTheme = settings.IsDarkBoard();
+            var flags = (RustRenderWrapper.RustRenderService.CurrentFlags & ~RustRenderWrapper.RenderFlags.DarkMode)
                 | (darkTheme ? RustRenderWrapper.RenderFlags.DarkMode : 0);
+            var themeClass = ThemeCatalog.HighlightClass(theme, darkTheme);
+            RustRenderWrapper.RustRenderService.SetOptions(flags, themeClass);
+            var previewOptions = RustRenderWrapper.RustRenderService.BuildOptionsWord(flags, themeClass);
 
             var defaultBodyStyle = "";
             var markdownStyleContent = GetCssContent();
@@ -302,12 +304,13 @@ OUTLINE_SCRIPT_PLACEHOLDER
                 if (settings.ShowOutline)
                     invalidExtensionMessage = InjectOutlineScript(invalidExtensionMessage);
 
-                return new RenderResult(invalidExtensionMessage, invalidExtensionMessage, invalidExtensionMessageBody, markdownStyleContent, invalidExtensionMessage);
+                return new RenderResult(invalidExtensionMessage, invalidExtensionMessage, invalidExtensionMessageBody, markdownStyleContent);
             }
 
-            // 渲染缓存: 同一 (文档, 文本, 样式, 大纲, 导出策略) 组合直接复用上次结果。
+            // 渲染缓存: 同一 (文档, 文本, 样式, 大纲, 导出策略, options) 组合直接
+            // 复用上次结果。options 入 key 防止撕裂/错配渲染被钉在缓存里。
             var exportNeeded = !string.IsNullOrWhiteSpace(settings.HtmlFileName);
-            var cacheKey = new RenderCacheKey(filepath, currentText, markdownStyleContent, settings.ShowOutline, exportNeeded);
+            var cacheKey = new RenderCacheKey(filepath, currentText, markdownStyleContent, settings.ShowOutline, exportNeeded, previewOptions);
             var cached = TryGetCachedRender(cacheKey);
             if (cached != null)
                 return cached;
@@ -319,19 +322,15 @@ OUTLINE_SCRIPT_PLACEHOLDER
 
             var markdownHtmlBrowser = string.Format(htmlTemplate, Path.GetFileName(filepath), markdownStyleContent, defaultBodyStyle, resultForBrowser);
             var markdownHtmlFileExport = exportNeeded ? string.Format(htmlTemplate, Path.GetFileName(filepath), markdownStyleContent, defaultBodyStyle, resultForExport) : null;
-            var markdownHtmlFileExportWithLightTheme = exportNeeded ? string.Format(htmlTemplate, Path.GetFileName(filepath), GetCssContent(true), defaultBodyStyle, resultForExport) : null;
 
             if (settings.ShowOutline)
             {
                 markdownHtmlBrowser = InjectOutlineScript(markdownHtmlBrowser);
                 if (exportNeeded)
-                {
                     markdownHtmlFileExport = InjectOutlineScript(markdownHtmlFileExport);
-                    markdownHtmlFileExportWithLightTheme = InjectOutlineScript(markdownHtmlFileExportWithLightTheme);
-                }
             }
 
-            var renderResult = new RenderResult(markdownHtmlBrowser, markdownHtmlFileExport, resultForBrowser, markdownStyleContent, markdownHtmlFileExportWithLightTheme);
+            var renderResult = new RenderResult(markdownHtmlBrowser, markdownHtmlFileExport, resultForBrowser, markdownStyleContent);
             StoreCachedRender(cacheKey, renderResult);
             return renderResult;
         }
@@ -345,7 +344,7 @@ OUTLINE_SCRIPT_PLACEHOLDER
 
             // v0.9.3+: 显式选择的预览主题（非 Default）走语义 token 样式表，
             // ThemeCatalog 注入 :root 变量块；主题部署缺失时回退旧样式。
-            var useDarkTheme = settings.IsDarkModeEnabled && settings.FollowDarkMode && !forceLightTheme;
+            var useDarkTheme = settings.IsDarkBoard() && !forceLightTheme;
             var theme = ThemeCatalog.Find(settings.PreviewTheme);
             if (!theme.IsDefault)
             {
@@ -389,7 +388,6 @@ OUTLINE_SCRIPT_PLACEHOLDER
                     {
                         webbrowserControl.SetContent(renderedText.Result.ResultForBrowser, renderedText.Result.ResultBody, renderedText.Result.ResultStyle, currentFilePath);
                         htmlContentForExport = renderedText.Result.ResultForExport;
-                        htmlContentForExportWithLightTheme = renderedText.Result.ResultForExportWithLightTheme;
                         currentMarkdownText = currentText;
                         if (!String.IsNullOrWhiteSpace(settings.HtmlFileName))
                         {
@@ -487,9 +485,10 @@ OUTLINE_SCRIPT_PLACEHOLDER
         {
             if (!string.IsNullOrEmpty(filename))
             {
-                // 导出版为惰性渲染时在此按需生成。
+                // 导出版一律按需生成：暗色版通常已随预览算好（配置了自动落盘时），
+                // 亮色版必须以亮色 options 单独渲染（不能复用暗色 body）。
                 if (overrideLightTheme)
-                    File.WriteAllText(filename, htmlContentForExportWithLightTheme ?? RenderExportHtml(true));
+                    File.WriteAllText(filename, RenderExportHtml(true));
                 else
                     File.WriteAllText(filename, htmlContentForExport ?? RenderExportHtml(false));
             }
@@ -576,7 +575,16 @@ OUTLINE_SCRIPT_PLACEHOLDER
         private string RenderExportHtml(bool forceLightTheme)
         {
             var htmlTemplate = settings.ShowOutline ? OUTLINE_HTML_BASE : DEFAULT_HTML_BASE;
-            var resultForExport = markdownService.ConvertToHtml(currentMarkdownText, null, false);
+            // 亮色导出必须以亮色板 class + 清零 DarkMode 位的 options 重新渲染
+            // body —— 复用预览（暗色）快照会把暗色代码块烘进亮色 HTML。
+            // options 经参数显式传入，不切换共享快照，导出期间不影响预览渲染。
+            var theme = ThemeCatalog.Find(settings.PreviewTheme);
+            var darkBoard = forceLightTheme ? false : settings.IsDarkBoard();
+            var flags = (RustRenderWrapper.RustRenderService.CurrentFlags & ~RustRenderWrapper.RenderFlags.DarkMode)
+                | (darkBoard ? RustRenderWrapper.RenderFlags.DarkMode : 0);
+            var exportOptions = RustRenderWrapper.RustRenderService.BuildOptionsWord(
+                flags, ThemeCatalog.HighlightClass(theme, darkBoard));
+            var resultForExport = markdownService.ConvertToHtml(currentMarkdownText, null, false, exportOptions);
             var html = string.Format(htmlTemplate, Path.GetFileName(currentFilePath), GetCssContent(forceLightTheme), "", resultForExport);
             if (settings.ShowOutline)
                 html = InjectOutlineScript(html);
@@ -592,20 +600,23 @@ OUTLINE_SCRIPT_PLACEHOLDER
             private readonly string style;
             private readonly bool outline;
             private readonly bool exportNeeded;
+            private readonly uint options;
 
-            public RenderCacheKey(string filepath, string text, string style, bool outline, bool exportNeeded)
+            public RenderCacheKey(string filepath, string text, string style, bool outline, bool exportNeeded, uint options)
             {
                 this.filepath = filepath ?? "";
                 this.text = text ?? "";
                 this.style = style ?? "";
                 this.outline = outline;
                 this.exportNeeded = exportNeeded;
+                this.options = options;
             }
 
             public bool Equals(RenderCacheKey other)
             {
                 return outline == other.outline
                     && exportNeeded == other.exportNeeded
+                    && options == other.options
                     && string.Equals(filepath, other.filepath, StringComparison.Ordinal)
                     && string.Equals(text, other.text, StringComparison.Ordinal)
                     && string.Equals(style, other.style, StringComparison.Ordinal);
@@ -626,6 +637,7 @@ OUTLINE_SCRIPT_PLACEHOLDER
                     h = h * 31 + StringComparer.Ordinal.GetHashCode(style);
                     h = h * 31 + (outline ? 1 : 0);
                     h = h * 31 + (exportNeeded ? 1 : 0);
+                    h = h * 31 + options.GetHashCode();
                     return h;
                 }
             }

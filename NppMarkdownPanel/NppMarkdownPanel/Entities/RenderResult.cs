@@ -8,19 +8,17 @@ namespace NppMarkdownPanel.Entities
 {
     public class RenderResult
     {
-        public RenderResult(string resultForBrowser, string resultForExport, string resultBody, string resultStyle, string resultForExportWithLightTheme)
+        public RenderResult(string resultForBrowser, string resultForExport, string resultBody, string resultStyle)
         {
             ResultForBrowser = resultForBrowser;
             ResultForExport = resultForExport;
             ResultBody = resultBody;
             ResultStyle = resultStyle;
-            ResultForExportWithLightTheme = resultForExportWithLightTheme;
         }
 
 
         public string ResultForBrowser { get; set; }
         public string ResultForExport { get; set; }
-        public string ResultForExportWithLightTheme { get; set; }
         public string ResultBody { get; set; }
         public string ResultStyle { get; set; }
     }

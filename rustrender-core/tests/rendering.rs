@@ -315,3 +315,23 @@ fn highlight_theme_auto_matches_legacy_dark_pair() {
     let b = render(md, None, &pinned).unwrap().html_body;
     assert_eq!(a, b);
 }
+
+#[test]
+fn highlight_theme_classes_five_and_six_select_distinct_palettes() {
+    // Class 5 (base16-mocha.dark, Dracula dark) and class 6 (Solarized (dark),
+    // Everforest dark) were the only themes without a render assertion; a
+    // mistyped THEME_CLASSES entry would panic on the theme lookup, so a
+    // successful render with distinct output IS the regression proof.
+    let md = "```rust\nfn main() { let x = 1; }\n```\n";
+    let opts = |c: u8| RenderOptions {
+        dark_mode: true,
+        highlight_theme: c,
+        ..RenderOptions::default()
+    };
+    let mocha = render(md, None, &opts(5)).unwrap().html_body;
+    let solarized_dark = render(md, None, &opts(6)).unwrap().html_body;
+    let eighties = render(md, None, &opts(4)).unwrap().html_body;
+    assert_ne!(mocha, solarized_dark);
+    assert_ne!(mocha, eighties);
+    assert_ne!(solarized_dark, eighties);
+}

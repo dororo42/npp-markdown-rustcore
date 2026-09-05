@@ -42,6 +42,11 @@ namespace NppMarkdownPanel
         public string ColorNote;
         public string ColorTip;
         public string ColorWarning;
+        /// <summary>
+        /// Reserved token: GitHub alerts have no "severe" class, so
+        /// style-themes.css never consumes it. Injected for parity with the
+        /// legacy sheets (style.css / style-dark.css), which define it too.
+        /// </summary>
         public string ColorSevere;
         public string ColorCaution;
         public string ColorImportant;
@@ -100,6 +105,7 @@ namespace NppMarkdownPanel
             return dark ? theme.DarkHighlightClass : theme.LightHighlightClass;
         }
 
+        private static readonly object SheetGate = new object();
         private static string cachedSheet;
 
         /// <summary>
@@ -157,21 +163,26 @@ namespace NppMarkdownPanel
 
         private static string LoadThemeSheet()
         {
-            if (cachedSheet != null) return cachedSheet;
-            try
+            // Guarded for concurrent render tasks; the file is a static
+            // deployment resource, so the cached value never needs invalidation.
+            lock (SheetGate)
             {
-                var assemblyDir = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
-                var sheetPath = Path.Combine(assemblyDir ?? ".", ThemeSheetFileName);
-                if (File.Exists(sheetPath))
+                if (cachedSheet != null) return cachedSheet;
+                try
                 {
-                    cachedSheet = File.ReadAllText(sheetPath);
+                    var assemblyDir = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
+                    var sheetPath = Path.Combine(assemblyDir ?? ".", ThemeSheetFileName);
+                    if (File.Exists(sheetPath))
+                    {
+                        cachedSheet = File.ReadAllText(sheetPath);
+                    }
                 }
+                catch (IOException)
+                {
+                    // Missing/unreadable sheet — caller falls back to legacy CSS.
+                }
+                return cachedSheet;
             }
-            catch (IOException)
-            {
-                // Missing/unreadable sheet — caller falls back to legacy CSS.
-            }
-            return cachedSheet;
         }
 
         // ------------------------------------------------------------------
@@ -181,6 +192,10 @@ namespace NppMarkdownPanel
         {
             return new[]
             {
+                // Default is documentation-only: rendering always routes this
+                // key to the legacy style.css / style-dark.css files and to
+                // highlight class 0 (see GetCssContent / HighlightClass), so
+                // the two boards below are never consumed at runtime.
                 new PreviewThemeDef
                 {
                     Key = DefaultKey,

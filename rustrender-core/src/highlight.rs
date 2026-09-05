@@ -49,6 +49,8 @@ const CACHE_MAX_BYTES: usize = 64 * 1024 * 1024;
 /// Adapters are cached per theme in process-lifetime statics: `SyntaxSet`
 /// construction is expensive (tens of ms) and the C# host keeps the DLL
 /// loaded for the whole session, so this matches the host lifecycle.
+/// The heavyweight assets are shared process-wide (see [`shared_syntax_set`]),
+/// so an adapter only owns its per-theme highlight cache.
 pub fn make_plugins(opts: &RenderOptions) -> Plugins<'_> {
     #[cfg(feature = "syntax-highlight")]
     {
@@ -89,11 +91,27 @@ fn adapter_for(class: usize) -> &'static CachedAdapter {
     CELLS[idx].get_or_init(|| CachedAdapter::new(THEME_CLASSES[idx]))
 }
 
+/// Process-wide shared `SyntaxSet` — `load_defaults_newlines()` costs tens of
+/// ms and tens of MB, and every theme lexes with the same grammar set, so all
+/// six adapters share one copy instead of each pinning its own (PERF-4: the
+/// per-adapter copies peaked at ~5x redundant resident memory).
+#[cfg(feature = "syntax-highlight")]
+fn shared_syntax_set() -> &'static syntect::parsing::SyntaxSet {
+    static SHARED: OnceLock<syntect::parsing::SyntaxSet> = OnceLock::new();
+    SHARED.get_or_init(syntect::parsing::SyntaxSet::load_defaults_newlines)
+}
+
+/// Process-wide shared `ThemeSet` — `load_defaults()` deserializes every
+/// built-in theme at once, so per-adapter copies were pure duplication.
+#[cfg(feature = "syntax-highlight")]
+fn shared_theme_set() -> &'static syntect::highlighting::ThemeSet {
+    static SHARED: OnceLock<syntect::highlighting::ThemeSet> = OnceLock::new();
+    SHARED.get_or_init(syntect::highlighting::ThemeSet::load_defaults)
+}
+
 #[cfg(feature = "syntax-highlight")]
 struct CachedAdapter {
     theme: &'static str,
-    syntax_set: syntect::parsing::SyntaxSet,
-    theme_set: syntect::highlighting::ThemeSet,
     cache: Mutex<HashMap<u64, (ExactKey, String)>>,
     cached_bytes: Mutex<usize>,
 }
@@ -113,8 +131,6 @@ impl CachedAdapter {
     fn new(theme: &'static str) -> Self {
         CachedAdapter {
             theme,
-            syntax_set: syntect::parsing::SyntaxSet::load_defaults_newlines(),
-            theme_set: syntect::highlighting::ThemeSet::load_defaults(),
             cache: Mutex::new(HashMap::new()),
             cached_bytes: Mutex::new(0),
         }
@@ -126,10 +142,11 @@ impl CachedAdapter {
         use syntect::html::{append_highlighted_html_for_styled_line, IncludeBackground};
         use syntect::util::LinesWithEndings;
 
+        let syntax_set = shared_syntax_set();
         let syntax = lang
-            .and_then(|l| self.syntax_set.find_syntax_by_token(l))
-            .unwrap_or_else(|| self.syntax_set.find_syntax_plain_text());
-        let theme = &self.theme_set.themes[self.theme];
+            .and_then(|l| syntax_set.find_syntax_by_token(l))
+            .unwrap_or_else(|| syntax_set.find_syntax_plain_text());
+        let theme = &shared_theme_set().themes[self.theme];
         let mut highlighter = HighlightLines::new(syntax, theme);
         let bg = theme
             .settings
@@ -139,7 +156,7 @@ impl CachedAdapter {
         let mut out = String::with_capacity(code.len() * 3 / 2);
         for line in LinesWithEndings::from(code) {
             let regions = highlighter
-                .highlight_line(line, &self.syntax_set)
+                .highlight_line(line, syntax_set)
                 .map_err(|_| fmt::Error)?;
             append_highlighted_html_for_styled_line(
                 &regions[..],
@@ -211,7 +228,7 @@ impl SyntaxHighlighterAdapter for CachedAdapter {
         mut attributes: HashMap<&'static str, std::borrow::Cow<'_, str>>,
     ) -> fmt::Result {
         use syntect::highlighting::Color;
-        let colour = self.theme_set.themes[self.theme]
+        let colour = shared_theme_set().themes[self.theme]
             .settings
             .background
             .unwrap_or(Color::WHITE);

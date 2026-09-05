@@ -19,8 +19,13 @@ namespace NppMarkdownPanel.Entities
         {
             RenderingEngine = RENDERING_ENGINE_WEBVIEW2_EDGE;
             PreviewTheme = ThemeCatalog.DefaultKey;
-            FollowDarkMode = true;
+            PreviewDarkMode = DarkModeAuto;
         }
+
+        /// <summary>Preview dark-mode board selection: 0 = follow the editor, 1 = force light, 2 = force dark.</summary>
+        public const int DarkModeAuto = 0;
+        public const int DarkModeForceLight = 1;
+        public const int DarkModeForceDark = 2;
 
         public string CssFileName { get; set; }
         public string CssDarkModeFileName { get; set; }
@@ -39,8 +44,20 @@ namespace NppMarkdownPanel.Entities
         /// <summary>Preview color theme key (ThemeCatalog: Default/Obsidian/Nord/...).</summary>
         public string PreviewTheme { get; set; }
 
-        /// <summary>true → the theme's light/dark board follows the editor dark mode.</summary>
-        public bool FollowDarkMode { get; set; }
+        /// <summary>
+        /// Which board (light/dark) of the selected theme to render:
+        /// DarkModeAuto follows the editor dark mode; ForceLight/ForceDark pin
+        /// a board so e.g. a light editor can still preview dark palettes
+        /// (replaces the old binary FollowDarkMode flag).
+        /// </summary>
+        public int PreviewDarkMode { get; set; }
+
+        /// <summary>Effective dark-board decision for rendering.</summary>
+        public bool IsDarkBoard()
+        {
+            return PreviewDarkMode == DarkModeForceDark
+                || (PreviewDarkMode == DarkModeAuto && IsDarkModeEnabled);
+        }
 
         public string PreProcessorCommandFilename { get; set; }
         public string PreProcessorArguments { get; set; }

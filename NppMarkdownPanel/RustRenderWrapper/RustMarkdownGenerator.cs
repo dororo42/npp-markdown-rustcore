@@ -43,6 +43,32 @@ namespace RustRenderWrapper
             set { lock (OptionsGate) { _currentThemeClass = value; } }
         }
 
+        /// <summary>
+        /// Atomic (flags, theme class) update — the render-side replacement
+        /// for assigning <see cref="CurrentFlags"/> and
+        /// <see cref="CurrentThemeClass"/> in two statements, which left a
+        /// window where a concurrent render snapshotted a torn pair.
+        /// </summary>
+        public static void SetOptions(RenderFlags flags, byte themeClass)
+        {
+            lock (OptionsGate)
+            {
+                _currentFlags = flags;
+                _currentThemeClass = themeClass;
+            }
+        }
+
+        /// <summary>
+        /// Build the raw FFI option word for an explicit (flags, theme class)
+        /// pair without touching the shared snapshot — used by export paths
+        /// that must render with options other than the current preview ones
+        /// (e.g. the light-theme export).
+        /// </summary>
+        public static uint BuildOptionsWord(RenderFlags flags, byte themeClass)
+        {
+            return (uint)flags | ((uint)themeClass << 7);
+        }
+
         /// <summary>True when rustrender.dll loaded successfully.</summary>
         public static bool NativeAvailable { get; }
 
@@ -74,7 +100,7 @@ namespace RustRenderWrapper
         }
     }
 
-    public sealed class RustMarkdownGenerator : IMarkdownGenerator
+    public sealed class RustMarkdownGenerator : INativeOptionsGenerator
     {
         // Fallback pipeline is constructed lazily: only pay the Markdig init
         // cost if the native DLL is actually missing/failing.
@@ -88,6 +114,12 @@ namespace RustRenderWrapper
 
         public string ConvertToHtml(string markDownText, string filepath, bool supportEscapeCharsInUris)
         {
+            return ConvertToHtmlWithOptions(markDownText, filepath, supportEscapeCharsInUris,
+                RustRenderService.EffectiveOptions());
+        }
+
+        public string ConvertToHtmlWithOptions(string markDownText, string filepath, bool supportEscapeCharsInUris, uint nativeOptions)
+        {
             if (_native)
             {
                 try
@@ -98,9 +130,9 @@ namespace RustRenderWrapper
 
                     // Route C front-ends handle mermaid/katex; the flags are
                     // forwarded unchanged. Native highlighting bakes the theme
-                    // matching the flags + theme class snapshot below.
+                    // matching the option word below (flags + theme class).
                     return NativeMethods.RenderMarkdown(
-                        markDownText, dir, RustRenderService.EffectiveOptions());
+                        markDownText, dir, nativeOptions);
                 }
                 catch (DllNotFoundException)
                 {

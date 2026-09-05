@@ -128,8 +128,23 @@ namespace NppMarkdownPanel
             settings.RenderingEngine = Win32.ReadIniValue("Options", "RenderingEngine", iniFilePath, Settings.RENDERING_ENGINE_WEBVIEW2_EDGE);
             settings.ShowOutline = PluginUtils.ReadIniBool("Options", "ShowOutline", iniFilePath, false);
             settings.PreviewTheme = ThemeCatalog.Find(Win32.ReadIniValue("Options", "PreviewTheme", iniFilePath, ThemeCatalog.DefaultKey)).Key;
-            settings.FollowDarkMode = PluginUtils.ReadIniBool("Options", "FollowDarkMode", iniFilePath, true);
+            settings.PreviewDarkMode = ReadPreviewDarkMode();
             return settings;
+        }
+
+        /// <summary>
+        /// Read the preview dark-mode board preference (Auto/ForceLight/ForceDark).
+        /// Missing value → migrate from the legacy FollowDarkMode bool
+        /// (true = Auto; false = ForceLight, the only state it could express).
+        /// </summary>
+        private int ReadPreviewDarkMode()
+        {
+            var stored = Win32.GetPrivateProfileInt("Options", "PreviewDarkMode", -1, iniFilePath);
+            if (stored >= Settings.DarkModeAuto && stored <= Settings.DarkModeForceDark)
+                return stored;
+            return PluginUtils.ReadIniBool("Options", "FollowDarkMode", iniFilePath, true)
+                ? Settings.DarkModeAuto
+                : Settings.DarkModeForceLight;
         }
 
         public void OnNotification(ScNotification notification)
@@ -381,7 +396,7 @@ namespace NppMarkdownPanel
         }
 
         // N++ plugin menus are flat (no submenus): the 7 preview theme radio
-        // items + the follow-dark-mode toggle occupy slots 6..13.
+        // items + the 3 dark-mode-board radio items occupy slots 6..15.
         private const int FirstThemeItemIndex = 6;
 
         public void InitCommandMenu()
@@ -401,10 +416,12 @@ namespace NppMarkdownPanel
                 var isCurrentTheme = string.Equals(ThemeCatalog.Themes[i].Key, settings.PreviewTheme, StringComparison.OrdinalIgnoreCase);
                 PluginBase.SetCommand(FirstThemeItemIndex + i, ThemeCatalog.Themes[i].MenuLabel, () => SelectPreviewTheme(themeKey), isCurrentTheme);
             }
-            var followDarkModeItem = FirstThemeItemIndex + ThemeCatalog.Themes.Length;
-            PluginBase.SetCommand(followDarkModeItem, "Follow editor &dark mode", ToggleFollowDarkMode, settings.FollowDarkMode);
-            PluginBase.SetCommand(followDarkModeItem + 1, "---", null);
-            var nextItem = followDarkModeItem + 2;
+            var darkModeItem = FirstThemeItemIndex + ThemeCatalog.Themes.Length;
+            PluginBase.SetCommand(darkModeItem + 0, "Preview &dark mode: Auto (follow editor)", () => SelectPreviewDarkMode(Settings.DarkModeAuto), settings.PreviewDarkMode == Settings.DarkModeAuto);
+            PluginBase.SetCommand(darkModeItem + 1, "Preview dark mode: Force &light", () => SelectPreviewDarkMode(Settings.DarkModeForceLight), settings.PreviewDarkMode == Settings.DarkModeForceLight);
+            PluginBase.SetCommand(darkModeItem + 2, "Preview dark mode: Force d&ark", () => SelectPreviewDarkMode(Settings.DarkModeForceDark), settings.PreviewDarkMode == Settings.DarkModeForceDark);
+            PluginBase.SetCommand(darkModeItem + 3, "---", null);
+            var nextItem = darkModeItem + 4;
             PluginBase.SetCommand(nextItem, "&Settings", EditSettings);
             PluginBase.SetCommand(nextItem + 1, "&Help", ShowHelp);
             PluginBase.SetCommand(nextItem + 2, "&About", ShowAboutDialog);
@@ -424,9 +441,11 @@ namespace NppMarkdownPanel
             if (isPanelVisible) RenderMarkdownDirect();
         }
 
-        private void ToggleFollowDarkMode()
+        private void SelectPreviewDarkMode(int darkMode)
         {
-            settings.FollowDarkMode = !settings.FollowDarkMode;
+            if (settings.PreviewDarkMode == darkMode)
+                return;
+            settings.PreviewDarkMode = darkMode;
             SaveSettings();
             RefreshThemeMenuChecks();
             if (isPanelVisible) RenderMarkdownDirect();
@@ -441,8 +460,13 @@ namespace NppMarkdownPanel
                 var isChecked = string.Equals(ThemeCatalog.Themes[i].Key, settings.PreviewTheme, StringComparison.OrdinalIgnoreCase);
                 Win32.CheckMenuItem(menu, cmdId, Win32.MF_BYCOMMAND | (isChecked ? Win32.MF_CHECKED : Win32.MF_UNCHECKED));
             }
-            var followCmdId = PluginBase._funcItems.Items[FirstThemeItemIndex + ThemeCatalog.Themes.Length]._cmdID;
-            Win32.CheckMenuItem(menu, followCmdId, Win32.MF_BYCOMMAND | (settings.FollowDarkMode ? Win32.MF_CHECKED : Win32.MF_UNCHECKED));
+            var darkModeItem = FirstThemeItemIndex + ThemeCatalog.Themes.Length;
+            for (int i = 0; i < 3; i++)
+            {
+                var cmdId = PluginBase._funcItems.Items[darkModeItem + i]._cmdID;
+                var isChecked = settings.PreviewDarkMode == i;
+                Win32.CheckMenuItem(menu, cmdId, Win32.MF_BYCOMMAND | (isChecked ? Win32.MF_CHECKED : Win32.MF_UNCHECKED));
+            }
         }
 
         private void EditSettings()
@@ -554,7 +578,7 @@ namespace NppMarkdownPanel
             Win32.WriteIniValue("Options", "RenderingEngine", settings.RenderingEngine, iniFilePath);
             Win32.WriteIniValue("Options", "ShowOutline", settings.ShowOutline.ToString(), iniFilePath);
             Win32.WriteIniValue("Options", "PreviewTheme", ThemeCatalog.Find(settings.PreviewTheme).Key, iniFilePath);
-            Win32.WriteIniValue("Options", "FollowDarkMode", settings.FollowDarkMode.ToString(), iniFilePath);
+            Win32.WriteIniValue("Options", "PreviewDarkMode", settings.PreviewDarkMode.ToString(), iniFilePath);
         }
         private void ShowAboutDialog()
         {
