@@ -14,5 +14,7 @@ namespace NppMarkdownPanel.Forms
         bool IsValidFileExtension(string filename);
         void Cleanup();
         void ExportToPdf();
+        /// <summary>Save-as dialog exporting the current preview as HTML; embedImages bakes local images in as base64 data URIs (single file).</summary>
+        void ExportToHtml(bool embedImages);
     }
 }

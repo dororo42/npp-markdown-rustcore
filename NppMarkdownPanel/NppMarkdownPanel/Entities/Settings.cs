@@ -15,6 +15,10 @@ namespace NppMarkdownPanel.Entities
         public const string RENDERING_ENGINE_WEBVIEW1_IE11 = "IE11";
         public const string RENDERING_ENGINE_WEBVIEW2_EDGE = "EDGE";
 
+        /// <summary>Preview zoom slider bounds (percent) — see SettingsForm trackBar.</summary>
+        public const int ZoomMinPercent = 50;
+        public const int ZoomMaxPercent = 200;
+
         public Settings()
         {
             RenderingEngine = RENDERING_ENGINE_WEBVIEW2_EDGE;

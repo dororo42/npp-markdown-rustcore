@@ -115,7 +115,7 @@ namespace NppMarkdownPanel
             settings.PostProcessorArguments = Win32.ReadIniValue("Options", "PostProcessorArguments", iniFilePath, "");
             settings.CssFileName = Win32.ReadIniValue("Options", "CssFileName", iniFilePath, "style.css");
             settings.CssDarkModeFileName = Win32.ReadIniValue("Options", "CssDarkModeFileName", iniFilePath, "style-dark.css");
-            settings.ZoomLevel = Win32.GetPrivateProfileInt("Options", "ZoomLevel", 130, iniFilePath);
+            settings.ZoomLevel = Math.Max(Settings.ZoomMinPercent, Math.Min(Settings.ZoomMaxPercent, Win32.GetPrivateProfileInt("Options", "ZoomLevel", 130, iniFilePath)));
             settings.HtmlFileName = Win32.ReadIniValue("Options", "HtmlFileName", iniFilePath);
             settings.ShowToolbar = PluginUtils.ReadIniBool("Options", "ShowToolbar", iniFilePath);
             settings.ShowStatusbar = PluginUtils.ReadIniBool("Options", "ShowStatusbar", iniFilePath);
@@ -427,6 +427,8 @@ namespace NppMarkdownPanel
             PluginBase.SetCommand(nextItem + 2, "&About", ShowAboutDialog);
             PluginBase.SetCommand(nextItem + 3, "---", null);
             PluginBase.SetCommand(nextItem + 4, "Export to &PDF", ExportToPdf);
+            PluginBase.SetCommand(nextItem + 5, "Export HT&ML...", ExportHtml);
+            PluginBase.SetCommand(nextItem + 6, "Export HTML with &Images (single file)...", ExportHtmlWithImages);
             idMyDlg = 0;
         }
 
@@ -589,6 +591,17 @@ namespace NppMarkdownPanel
         private void ExportToPdf()
         {
             viewerInterface.ExportToPdf();
+        }
+
+        private void ExportHtml()
+        {
+            viewerInterface.ExportToHtml(false);
+        }
+
+        private void ExportHtmlWithImages()
+        {
+            // 浏览器「另存为网页」式导出：本地图片 base64 内嵌为单文件 HTML。
+            viewerInterface.ExportToHtml(true);
         }
 
         private bool initDialog;

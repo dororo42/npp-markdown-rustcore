@@ -1,5 +1,6 @@
 ﻿using NppMarkdownPanel.Entities;
 using System;
+using System.Drawing;
 using System.Windows.Forms;
 
 namespace NppMarkdownPanel.Forms
@@ -22,6 +23,11 @@ namespace NppMarkdownPanel.Forms
 
         public SettingsForm(Settings settings)
         {
+            // 与系统 UI 一致的字体（100% 缩放下为 Segoe UI 9pt），替代
+            // Designer 硬编码的小号字体；须在 InitializeComponent 之前设置，
+            // 子控件创建时即继承。
+            Font = SystemFonts.MessageBoxFont;
+
             ZoomLevel = settings.ZoomLevel;
             CssFileName = settings.CssFileName;
             CssDarkModeFileName = settings.CssDarkModeFileName;
@@ -37,6 +43,9 @@ namespace NppMarkdownPanel.Forms
 
             InitializeComponent();
 
+            // 旧配置可能带有超范围值（此前上限 800）：赋给滑条会抛
+            // ArgumentOutOfRangeException，先钳制到 [50, 200]。
+            ZoomLevel = Math.Max(Settings.ZoomMinPercent, Math.Min(Settings.ZoomMaxPercent, ZoomLevel));
             trackBar1.Value = ZoomLevel;
             lblZoomValue.Text = $"{ZoomLevel}%";
             tbCssFile.Text = CssFileName;

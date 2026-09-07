@@ -21,6 +21,7 @@
 - **Mermaid 图表**：` ```mermaid ` 围栏在预览中直接渲染为图表（CDN mermaid@11，首载与增量更新均自动转换；离线降级为高亮代码块）
 - **7 套预览主题**：Default（GitHub）/ Obsidian / Nord / Gruvbox / Everforest / Dracula / Catppuccin × 明暗双板，插件菜单即时切换 + ini 持久化
 - **本地图片/链接**：comrak `URLRewriter` 阶段解析为绝对 `file:///` URL（无正则后处理）
+- **HTML 导出**：菜单「Export HTML…」直接导出；「Export HTML with Images…」为浏览器「另存为网页」式单文件——本地图片 base64 内嵌，离线可看；Settings 可配置每次渲染自动落盘
 - **安全净化**：ammonia 白名单（默认禁 `data:`/`javascript:`，保留 syntect 受控内联样式）
 - **滚动同步锚点**：全块级 `data-line` + 标题 `data-src-line`（与上游 Webview2 控件契约兼容）；光标位于多行块内部时回退最近前驱块，不再静默失联
 - **外链防劫持**：预览中的外部链接一律转交系统浏览器打开，面板内绝不导航外部页面；渲染链失败时显示错误卡片而非静默停更

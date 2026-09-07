@@ -9,6 +9,7 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Threading.Tasks;
+using System.Text.RegularExpressions;
 using System.Windows.Forms;
 using TheArtOfDev.HtmlRenderer.WinForms.Utilities;
 using Webview2Viewer;
@@ -504,7 +505,7 @@ OUTLINE_SCRIPT_PLACEHOLDER
             ShowSaveAs(true);
         }
 
-        private void ShowSaveAs(bool overrideLightTheme)
+        private void ShowSaveAs(bool overrideLightTheme, bool embedImages = false)
         {
             using (SaveFileDialog saveFileDialog = new SaveFileDialog())
             {
@@ -514,21 +515,127 @@ OUTLINE_SCRIPT_PLACEHOLDER
                 saveFileDialog.FileName = Path.GetFileNameWithoutExtension(currentFilePath);
                 if (saveFileDialog.ShowDialog() == DialogResult.OK)
                 {
-                    writeHtmlContentToFile(saveFileDialog.FileName, overrideLightTheme);
+                    writeHtmlContentToFile(saveFileDialog.FileName, overrideLightTheme, embedImages);
                 }
             }
         }
 
-        private void writeHtmlContentToFile(string filename, bool overrideLightTheme = false)
+        public void ExportToHtml(bool embedImages)
+        {
+            if (webbrowserControl == null) return;
+            ShowSaveAs(false, embedImages);
+        }
+
+        private void writeHtmlContentToFile(string filename, bool overrideLightTheme = false, bool embedImages = false)
         {
             if (!string.IsNullOrEmpty(filename))
             {
                 // 导出版一律按需生成：暗色版通常已随预览算好（配置了自动落盘时），
                 // 亮色版必须以亮色 options 单独渲染（不能复用暗色 body）。
-                if (overrideLightTheme)
-                    File.WriteAllText(filename, RenderExportHtml(true));
+                var html = overrideLightTheme
+                    ? RenderExportHtml(true)
+                    : (htmlContentForExport ?? RenderExportHtml(false));
+                if (embedImages)
+                    html = EmbedLocalImages(html);
+                File.WriteAllText(filename, html);
+            }
+        }
+
+        // ------------------------------------------------------------------
+        // 单文件导出（浏览器「另存为网页」式）: 本地图片内嵌为 base64 data URI。
+
+        // 单张图片内嵌上限: 防异常大图把导出 HTML 撑爆。
+        private const long MaxEmbedImageBytes = 16 * 1024 * 1024;
+
+        // comrak 输出的 <img> 恒为双引号属性; 仅匹配本地可内嵌的 src。
+        private static readonly Regex ImgSrcRegex = new Regex(
+            "(?<prefix><img\\b[^>]*?\\bsrc=\")(?<src>[^\"]+)(?<sfx>\")",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+        /// <summary>
+        /// 把 HTML 中指向本地文件的图片改写为 base64 data URI, 使导出的单个
+        /// .html 离线自带全部本地图片。远程图片（http/https）与已是 data: URI
+        /// 的引用保持原样; 解析或读盘失败静默跳过（保留原引用）。
+        /// </summary>
+        private string EmbedLocalImages(string html)
+        {
+            if (string.IsNullOrEmpty(html) || string.IsNullOrEmpty(currentFilePath))
+                return html;
+            var baseDir = Path.GetDirectoryName(currentFilePath);
+            if (string.IsNullOrEmpty(baseDir))
+                return html;
+
+            return ImgSrcRegex.Replace(html, match =>
+            {
+                var localPath = ResolveLocalImagePath(match.Groups["src"].Value, baseDir);
+                if (localPath == null)
+                    return match.Value;
+                try
+                {
+                    var mime = ImageMimeFromExtension(Path.GetExtension(localPath));
+                    if (mime == null)
+                        return match.Value;
+                    var bytes = File.ReadAllBytes(localPath);
+                    if (bytes.Length == 0 || bytes.Length > MaxEmbedImageBytes)
+                        return match.Value;
+                    return match.Groups["prefix"].Value
+                         + "data:" + mime + ";base64," + Convert.ToBase64String(bytes)
+                         + match.Groups["sfx"].Value;
+                }
+                catch (Exception)
+                {
+                    return match.Value;
+                }
+            });
+        }
+
+        /// <summary>把 img src 解析为存在的本地绝对路径; 远程/data:/未知引用返回 null。</summary>
+        private static string ResolveLocalImagePath(string src, string baseDir)
+        {
+            if (string.IsNullOrWhiteSpace(src) || src.StartsWith("data:", StringComparison.OrdinalIgnoreCase))
+                return null;
+            try
+            {
+                // 文件定位不含查询串/锚点，先剥离。
+                var raw = src.Split('?')[0].Split('#')[0];
+                if (raw.Length == 0)
+                    return null;
+
+                string path;
+                if (Uri.TryCreate(raw, UriKind.Absolute, out var uri))
+                {
+                    if (uri.Scheme != Uri.UriSchemeFile)
+                        return null; // http(s)/mailto 等远程引用保持原样
+                    path = uri.LocalPath;
+                }
                 else
-                    File.WriteAllText(filename, htmlContentForExport ?? RenderExportHtml(false));
+                {
+                    path = Path.IsPathRooted(raw)
+                        ? raw
+                        : Path.GetFullPath(Path.Combine(baseDir, raw.TrimStart('/')));
+                }
+                return File.Exists(path) ? path : null;
+            }
+            catch (Exception)
+            {
+                return null;
+            }
+        }
+
+        private static string ImageMimeFromExtension(string extension)
+        {
+            switch ((extension ?? "").ToLowerInvariant())
+            {
+                case ".png": return "image/png";
+                case ".jpg":
+                case ".jpeg": return "image/jpeg";
+                case ".gif": return "image/gif";
+                case ".webp": return "image/webp";
+                case ".bmp": return "image/bmp";
+                case ".svg": return "image/svg+xml";
+                case ".ico": return "image/x-icon";
+                case ".avif": return "image/avif";
+                default: return null;
             }
         }
 
