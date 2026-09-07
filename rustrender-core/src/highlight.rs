@@ -9,7 +9,9 @@
 //! (theme, lang, code). Editor re-renders on keystrokes hit the cache for
 //! every unchanged block, which is where syntect spends most of its time.
 //! (Measured: 100 KB doc with ~30% fences, 92 ms uncached → cache-warm
-//! renders drop to the no-highlight baseline.)
+//! renders drop to the no-highlight baseline.) The cache guards (entry
+//! count / total bytes) evict least-recently-used entries — tripping a
+//! guard costs a few cold blocks, not the whole warm cache.
 
 #[cfg(feature = "syntax-highlight")]
 use std::collections::HashMap;
@@ -112,8 +114,26 @@ fn shared_theme_set() -> &'static syntect::highlighting::ThemeSet {
 #[cfg(feature = "syntax-highlight")]
 struct CachedAdapter {
     theme: &'static str,
-    cache: Mutex<HashMap<u64, (ExactKey, String)>>,
-    cached_bytes: Mutex<usize>,
+    /// Cache state under a single lock: entries + byte accounting + the
+    /// monotonically increasing LRU tick.
+    cache: Mutex<CacheState>,
+}
+
+/// Mutable cache bookkeeping, all under one lock.
+#[cfg(feature = "syntax-highlight")]
+struct CacheState {
+    map: HashMap<u64, CacheEntry>,
+    tick: u64,
+    bytes: usize,
+}
+
+#[cfg(feature = "syntax-highlight")]
+struct CacheEntry {
+    exact: ExactKey,
+    html: String,
+    /// Last-use serial from `CacheState::tick`; the minimum is the LRU
+    /// eviction victim.
+    last_used: u64,
 }
 
 /// Exact input identity stored alongside the hash key, so a cache hit can be
@@ -131,8 +151,11 @@ impl CachedAdapter {
     fn new(theme: &'static str) -> Self {
         CachedAdapter {
             theme,
-            cache: Mutex::new(HashMap::new()),
-            cached_bytes: Mutex::new(0),
+            cache: Mutex::new(CacheState {
+                map: HashMap::new(),
+                tick: 0,
+                bytes: 0,
+            }),
         }
     }
 
@@ -170,6 +193,42 @@ impl CachedAdapter {
 }
 
 #[cfg(feature = "syntax-highlight")]
+impl CacheState {
+    /// Insert an entry, evicting least-recently-used entries while either
+    /// guard trips. Replaces the old clear-all: a single oversized document
+    /// used to nuke the whole warm cache, and the next render of any large
+    /// document then paid a full re-highlight CPU spike.
+    fn insert_lru(&mut self, key: u64, mut entry: CacheEntry) {
+        let incoming = entry.html.len() + entry.exact.code.len();
+        while self.map.len() >= CACHE_MAX_ENTRIES || self.bytes + incoming > CACHE_MAX_BYTES {
+            let Some(victim) = self
+                .map
+                .iter()
+                .min_by_key(|(_, e)| e.last_used)
+                .map(|(k, _)| *k)
+            else {
+                break; // cache empty: the incoming block alone exceeds the byte guard
+            };
+            let Some(removed) = self.map.remove(&victim) else {
+                break;
+            };
+            self.bytes = self
+                .bytes
+                .saturating_sub(removed.html.len() + removed.exact.code.len());
+        }
+        self.tick += 1;
+        entry.last_used = self.tick;
+        self.bytes += incoming;
+        if let Some(old) = self.map.insert(key, entry) {
+            // Replacing a colliding entry: don't double-count its bytes.
+            self.bytes = self
+                .bytes
+                .saturating_sub(old.html.len() + old.exact.code.len());
+        }
+    }
+}
+
+#[cfg(feature = "syntax-highlight")]
 impl SyntaxHighlighterAdapter for CachedAdapter {
     fn write_highlighted(
         &self,
@@ -185,10 +244,15 @@ impl SyntaxHighlighterAdapter for CachedAdapter {
         key = fnv1a(code.as_bytes(), key);
 
         {
-            let cache = self.cache.lock().unwrap();
-            if let Some((exact, hit)) = cache.get(&key) {
-                if exact.lang.as_deref() == lang && exact.code == code {
-                    return output.write_str(hit);
+            let mut guard = self.cache.lock().unwrap();
+            // Reborrow through the guard once so the map and tick borrows can
+            // be split (a hit must refresh the LRU serial).
+            let state = &mut *guard;
+            if let Some(entry) = state.map.get_mut(&key) {
+                if entry.exact.lang.as_deref() == lang && entry.exact.code == code {
+                    state.tick += 1;
+                    entry.last_used = state.tick;
+                    return output.write_str(&entry.html);
                 }
             }
         }
@@ -196,24 +260,18 @@ impl SyntaxHighlighterAdapter for CachedAdapter {
         let html = self.highlight_inline(lang, code)?;
 
         {
-            let mut cache = self.cache.lock().unwrap();
-            let mut bytes = self.cached_bytes.lock().unwrap();
-            if cache.len() >= CACHE_MAX_ENTRIES
-                || *bytes + html.len() + code.len() > CACHE_MAX_BYTES
-            {
-                cache.clear();
-                *bytes = 0;
-            }
-            *bytes += html.len() + code.len();
-            cache.insert(
+            let mut guard = self.cache.lock().unwrap();
+            let state = &mut *guard;
+            state.insert_lru(
                 key,
-                (
-                    ExactKey {
+                CacheEntry {
+                    exact: ExactKey {
                         lang: lang.map(str::to_string),
                         code: code.to_string(),
                     },
-                    html.clone(),
-                ),
+                    html: html.clone(),
+                    last_used: 0,
+                },
             );
         }
 
@@ -291,4 +349,50 @@ fn fnv1a(bytes: &[u8], mut hash: u64) -> u64 {
         hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
     }
     hash
+}
+
+#[cfg(all(test, feature = "syntax-highlight"))]
+mod tests {
+    use super::*;
+
+    fn entry(code: &str) -> CacheEntry {
+        CacheEntry {
+            exact: ExactKey {
+                lang: None,
+                code: code.to_string(),
+            },
+            html: format!("<span>{code}</span>"),
+            last_used: 0,
+        }
+    }
+
+    #[test]
+    fn evict_is_lru_not_clear_all() {
+        let mut state = CacheState {
+            map: HashMap::new(),
+            tick: 0,
+            bytes: 0,
+        };
+        for i in 0..CACHE_MAX_ENTRIES as u64 {
+            state.insert_lru(i, entry(&format!("block-{i}")));
+        }
+        assert_eq!(state.map.len(), CACHE_MAX_ENTRIES);
+
+        // Refresh key 0 (simulates a cache hit) so key 1 is the LRU victim.
+        state.map.get_mut(&0).unwrap().last_used = state.tick;
+
+        state.insert_lru(u64::MAX, entry("new-block"));
+
+        // Exactly the LRU entry was evicted — not the whole cache.
+        assert_eq!(state.map.len(), CACHE_MAX_ENTRIES);
+        assert!(
+            state.map.contains_key(&0),
+            "recently-used entry must survive"
+        );
+        assert!(
+            state.map.contains_key(&u64::MAX),
+            "new entry must be present"
+        );
+        assert!(!state.map.contains_key(&1), "LRU entry must be evicted");
+    }
 }

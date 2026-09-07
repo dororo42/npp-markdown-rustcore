@@ -24,7 +24,7 @@ namespace NppMarkdownPanel.Forms
                     <meta http-equiv=""X-UA-Compatible"" content=""IE=edge""></meta>
                     <meta http-equiv=""content-type"" content=""text/html; charset=utf-8""></meta>
                     <title>{0}</title>
-                    <style type=""text/css"">
+                    <style type=""text/css"" id=""md-preview-style"">
                     {1}
                     </style>
                     <script src=""https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"" onerror=""this.remove();""></script>
@@ -35,7 +35,7 @@ namespace NppMarkdownPanel.Forms
                 <body class=""markdown-body"" style=""{2}"">
                 {3}
                 <script>
-                if(typeof mermaid!=='undefined'){{mermaid.run();}}
+                (function(){{if(typeof mermaid==='undefined'){{return;}}var t=document.querySelectorAll('pre > code.language-mermaid');for(var i=0;i<t.length;i++){{var h=document.createElement('div');h.className='mermaid';h.textContent=t[i].textContent;var p=t[i].closest('pre');if(p){{p.replaceWith(h);}}else{{t[i].replaceWith(h);}}}}mermaid.run();}})();
                 </script>
                 </body>
             </html>
@@ -48,7 +48,7 @@ namespace NppMarkdownPanel.Forms
                     <meta http-equiv=""X-UA-Compatible"" content=""IE=edge""></meta>
                     <meta http-equiv=""content-type"" content=""text/html; charset=utf-8""></meta>
                     <title>{0}</title>
-                    <style type=""text/css"">
+                    <style type=""text/css"" id=""md-preview-style"">
                     {1}
                     </style>
                     <script src=""https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"" onerror=""this.remove();""></script>
@@ -65,7 +65,7 @@ namespace NppMarkdownPanel.Forms
                     <button id=""outline-toggle"" class=""outline-toggle"" title=""Toggle Outline"" onclick=""document.getElementById('outline-sidebar').classList.toggle('collapsed');this.classList.toggle('collapsed');"">&#9776;</button>
 OUTLINE_SCRIPT_PLACEHOLDER
                     <script>
-                    if(typeof mermaid!=='undefined'){{mermaid.run();}}
+                    (function(){{if(typeof mermaid==='undefined'){{return;}}var t=document.querySelectorAll('pre > code.language-mermaid');for(var i=0;i<t.length;i++){{var h=document.createElement('div');h.className='mermaid';h.textContent=t[i].textContent;var p=t[i].closest('pre');if(p){{p.replaceWith(h);}}else{{t[i].replaceWith(h);}}}}mermaid.run();}})();
                     </script>
                 </body>
             </html>
@@ -148,7 +148,7 @@ OUTLINE_SCRIPT_PLACEHOLDER
         private IWebbrowserControl webbrowserControl;
         private IWebbrowserControl webview1Instance;
         private IWebbrowserControl webview2Instance;
-        private bool cleanupStarted;
+        private volatile bool cleanupStarted;
         private Action<int> checkboxToggleHandler;
         private Action<int> radioToggleHandler;
 
@@ -384,8 +384,22 @@ OUTLINE_SCRIPT_PLACEHOLDER
                 renderTask = new Task<RenderResult>(() => RenderHtmlInternal(currentText, filepath));
                 renderTask.ContinueWith((renderedText) =>
                 {
-                    if (!cleanupStarted && myGeneration == renderGeneration)
+                    if (cleanupStarted || myGeneration != renderGeneration)
+                        return;
+                    try
                     {
+                        if (renderedText.IsFaulted)
+                        {
+                            // 渲染任务自身失败 (CSS 读盘、外部处理器抛出等):
+                            // 显示错误卡片, 而不是让 continuation 静默 fault、
+                            // 预览永远停在上一次的旧内容上。
+                            var reason = renderedText.Exception != null && renderedText.Exception.InnerException != null
+                                ? renderedText.Exception.InnerException.Message
+                                : (renderedText.Exception != null ? renderedText.Exception.Message : "unknown error");
+                            ShowRenderErrorCard(reason);
+                            return;
+                        }
+
                         webbrowserControl.SetContent(renderedText.Result.ResultForBrowser, renderedText.Result.ResultBody, renderedText.Result.ResultStyle, currentFilePath);
                         htmlContentForExport = renderedText.Result.ResultForExport;
                         currentMarkdownText = currentText;
@@ -400,7 +414,11 @@ OUTLINE_SCRIPT_PLACEHOLDER
                         }
                         webbrowserControl.SetZoomLevel(settings.ZoomLevel);
                     }
-
+                    catch (Exception)
+                    {
+                        // continuation 自身绝不允许再抛出: 否则异常会静默吞掉
+                        // 本次及后续所有预览更新
+                    }
                 }, context);
                 renderTask.Start();
             };
@@ -410,6 +428,26 @@ OUTLINE_SCRIPT_PLACEHOLDER
                 webbrowserControl.AfterInitCompletedAction = null;
                 renderAction();
             }
+        }
+
+        /// <summary>
+        /// 渲染链失败的错误卡片: 以完整文档替换预览, 用户能看到失败原因,
+        /// 而不是停留在上一次渲染的旧内容 (静默停更)。body 保留 markdown-body
+        /// class, 下一次成功渲染可无缝走增量更新路径恢复。
+        /// </summary>
+        private void ShowRenderErrorCard(string reason)
+        {
+            const string cardStyle = "body{margin:0;padding:16px;background:#fff;}";
+            var encoded = System.Net.WebUtility.HtmlEncode(reason ?? "");
+            var body = "<div style=\"max-width:680px;margin:2em auto;padding:12px 18px;border:1px solid #d9534f;" +
+                       "border-radius:6px;background:#fdf2f2;color:#333;font-family:'Segoe UI',Arial,sans-serif;\">" +
+                       "<h3 style=\"margin:0 0 8px 0;color:#a94442;font-size:15px;\">Markdown render error</h3>" +
+                       "<pre style=\"white-space:pre-wrap;margin:0;font-family:Consolas,'Courier New',monospace;" +
+                       "font-size:12px;color:#666;\">" + encoded + "</pre></div>";
+            var doc = "<!DOCTYPE html><html><head><meta http-equiv=\"content-type\" content=\"text/html; charset=utf-8\">" +
+                      "<style type=\"text/css\" id=\"md-preview-style\">" + cardStyle + "</style>" +
+                      "</head><body class=\"markdown-body\">" + body + "</body></html>";
+            webbrowserControl.SetContent(doc, body, cardStyle, currentFilePath);
         }
 
         /// <summary>

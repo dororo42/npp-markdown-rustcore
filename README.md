@@ -17,11 +17,13 @@
 - **完整 GFM**：表格、任务列表、删除线、自动链接、脚注、描述列表、上标
 - **GitHub Alerts / Obsidian Callout**：`> [!NOTE]` 原生渲染（comrak `alerts`）
 - **Obsidian 双链**：`[[Page|别名]]`（`data-wikilink` 属性供宿主拦截跳转）
-- **代码高亮**：syntect（onig）内联样式 + **进程级代码块缓存**，配色随预览主题联动
+- **代码高亮**：syntect（onig）内联样式 + **进程级代码块缓存**（LRU 逐出，大文档不清空热缓存），配色随预览主题联动
+- **Mermaid 图表**：` ```mermaid ` 围栏在预览中直接渲染为图表（CDN mermaid@11，首载与增量更新均自动转换；离线降级为高亮代码块）
 - **7 套预览主题**：Default（GitHub）/ Obsidian / Nord / Gruvbox / Everforest / Dracula / Catppuccin × 明暗双板，插件菜单即时切换 + ini 持久化
 - **本地图片/链接**：comrak `URLRewriter` 阶段解析为绝对 `file:///` URL（无正则后处理）
 - **安全净化**：ammonia 白名单（默认禁 `data:`/`javascript:`，保留 syntect 受控内联样式）
-- **滚动同步锚点**：全块级 `data-line` + 标题 `data-src-line`（与上游 Webview2 控件契约兼容）
+- **滚动同步锚点**：全块级 `data-line` + 标题 `data-src-line`（与上游 Webview2 控件契约兼容）；光标位于多行块内部时回退最近前驱块，不再静默失联
+- **外链防劫持**：预览中的外部链接一律转交系统浏览器打开，面板内绝不导航外部页面；渲染链失败时显示错误卡片而非静默停更
 - **崩溃隔离**：FFI 边界 `catch_unwind` + 512MB 大栈渲染线程，恶意文档最多返回错误码
 - **双出口**：同一核心编译为 Windows 原生 DLL（路线 A'）或 WASM（路线 C 实验）
 
@@ -195,12 +197,13 @@ const char* rustrender_version(void);
 
 ## 🗺 路线图
 
-- [x] Phase 0-1：共享核心 + 34 项测试全绿
+- [x] Phase 0-1：共享核心 + 50 项测试全绿（core 40 + FFI 10）
 - [x] Phase 2：Native DLL（x64/x86）+ C# 集成
 - [x] Phase 4-E1：WASM 出口构建 + JS 粘合层
+- [x] Phase 3-Mermaid：预览面板 mermaid@11 图表渲染（首载与增量更新路径均已接通）
 - [ ] Phase 2.5：滚动同步三阶段打磨（方向锁已就绪，接 Webview2 控件）
 - [ ] Phase 4-E2：syntect-fancy 纯 Rust 后端实验（WASM 高亮）
-- [ ] Phase 3：Mermaid/KaTeX 官方支持（core 占位位已预留）
+- [ ] Phase 3-KaTeX：公式渲染（core 占位位已预留）
 
 ## 🤝 参与贡献
 

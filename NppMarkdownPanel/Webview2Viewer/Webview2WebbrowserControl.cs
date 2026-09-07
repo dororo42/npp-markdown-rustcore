@@ -222,12 +222,27 @@ namespace Webview2Viewer
             if (!IsInitialized()) return;
         }
 
+        // Null guard + fallback: when the caret sits on line 2..n of a
+        // multi-line block there is no element with that exact data-line —
+        // fall back to the last block whose data-line <= target so the
+        // preview still scrolls to the enclosing block instead of silently
+        // doing nothing (querySelector returns null → JS error → no scroll).
         const string scrollScript =
             "var element = document.querySelector('[data-line=\"{0}\"]');\n" +
+            "if (!element) {{\n" +
+            "    var target = {0};\n" +
+            "    var candidates = document.querySelectorAll('[data-line]');\n" +
+            "    for (var i = 0; i < candidates.length; i++) {{\n" +
+            "        var ln = parseInt(candidates[i].getAttribute('data-line'), 10);\n" +
+            "        if (!isNaN(ln) && ln <= target) {{ element = candidates[i]; }}\n" +
+            "    }}\n" +
+            "}}\n" +
+            "if (element) {{\n" +
             "var headerOffset = 10;\n" +
             "var elementPosition = element.getBoundingClientRect().top;\n" +
             "var offsetPosition = elementPosition + window.pageYOffset - headerOffset;\n" +
-            "window.scrollTo({{top: offsetPosition}});";
+            "window.scrollTo({{top: offsetPosition}});\n" +
+            "}}";
 
         const string checkboxToggleScript = @"
             var checkboxes = document.querySelectorAll('input[type=""checkbox""]');
@@ -334,7 +349,12 @@ namespace Webview2Viewer
                     {
                         await webView.ExecuteScriptAsync(
                             "(function(){var om=document.getElementById('outline-main');if(om){om.innerHTML='" + HttpUtility.JavaScriptStringEncode(currentBody) + "';if(window.buildOutline)window.buildOutline();}else{document.body.innerHTML='" + HttpUtility.JavaScriptStringEncode(currentBody) + "';}})();" +
-                            "if(typeof mermaid!=='undefined'){mermaid.run();}"
+                            // comrak emits ```mermaid fences as
+                            // <pre><code class="language-mermaid"> — mermaid.run()
+                            // only picks up .mermaid elements, so convert the
+                            // fresh blocks before running it (offline/CDN
+                            // failure keeps the styled code block as-is).
+                            "if(typeof mermaid!=='undefined'){document.querySelectorAll('pre > code.language-mermaid').forEach(function(el){var h=document.createElement('div');h.className='mermaid';h.textContent=el.textContent;var p=el.closest('pre');if(p){p.replaceWith(h);}else{el.replaceWith(h);}});mermaid.run();}"
                         );
                         await webView.ExecuteScriptAsync(checkboxToggleScript);
                         await webView.ExecuteScriptAsync(radioToggleScript);
@@ -345,12 +365,14 @@ namespace Webview2Viewer
                     currentStyle = style;
                     ExecuteWebviewAction(new Action(async () =>
                     {
+                        // Replace the style element by its fixed id. The old
+                        // lastElementChild removal relied on DOM ordering
+                        // (it actually deleted the mermaid init script) and
+                        // accumulated one extra <style> per theme switch.
                         await webView.ExecuteScriptAsync(
-                            "document.head.removeChild(document.head.lastElementChild);\n" +
-                            "var style = document.createElement('style');\n" +
-                            "style.type = 'text/css'; \n" +
-                            "style.textContent = '" + HttpUtility.JavaScriptStringEncode(currentStyle) + "'; \n" +
-                            "document.head.appendChild(style); \n"
+                            "var style = document.getElementById('md-preview-style');\n" +
+                            "if (!style) { style = document.createElement('style'); style.id = 'md-preview-style'; style.type = 'text/css'; document.head.appendChild(style); }\n" +
+                            "style.textContent = '" + HttpUtility.JavaScriptStringEncode(currentStyle) + "'; \n"
                             );
                     }));
                 }
@@ -422,34 +444,56 @@ namespace Webview2Viewer
 
         void OnWebBrowser_NavigationStarting(object sender, CoreWebView2NavigationStartingEventArgs e)
         {
-            // Allow same-document fragment navigations (#anchor links)
-            if (e.Uri.ToString().Contains("#"))
+            var navUri = e.Uri.ToString();
+
+            // Same-document anchor navigations on our own pages (in-page
+            // #links). Only our own delivery origins qualify here — an
+            // external URL that happens to carry a '#fragment' must still
+            // take the external branch below.
+            if (navUri.StartsWith("about:blank#")
+                || (navUri.StartsWith("data:") && navUri.Contains("#"))
+                || (navUri.StartsWith("http://" + tmpVirtualHostName + "/") && navUri.Contains("#")))
                 return;
 
-            if (e.Uri.ToString().StartsWith("about:blank"))
+            if (navUri.StartsWith("about:blank"))
             {
                 e.Cancel = true;
             }
-            else if (!e.Uri.ToString().StartsWith("data:"))
+            else if (navUri.StartsWith("data:"))
             {
-                var navUri = e.Uri.ToString();
-                if (navUri.StartsWith(virtualHostProtocol + virtualHostName))
+                // NavigateToString delivery — allow.
+            }
+            else if (navUri.StartsWith(virtualHostProtocol + virtualHostName))
+            {
+                // Link to a file next to the document: open it in Notepad++.
+                e.Cancel = true;
+                var currentPath = Path.GetDirectoryName(currentDocumentPath);
+                var localUri = navUri.Replace(virtualHostProtocol + virtualHostName, currentPath);
+                var fragmentPos = localUri.IndexOf('#');
+                if (fragmentPos >= 0) localUri = localUri.Substring(0, fragmentPos);
+                localUri = Uri.UnescapeDataString(localUri);
+                openLocalFileInNppAction(localUri);
+            }
+            else if (navUri.StartsWith("http://" + tmpVirtualHostName + "/"))
+            {
+                // Internal oversized-preview navigation: neither cancel
+                // (it is our own delivery path) nor force a full reload.
+            }
+            else
+            {
+                // External link: never navigate the preview in-panel — the
+                // user would be stuck with a hijacked view (no address bar,
+                // no back button) and the postMessage bridge would be
+                // exposed to the foreign page's JS context. Cancel and hand
+                // it to the system browser instead.
+                e.Cancel = true;
+                forceFullReload = true;
+                try
                 {
-                    e.Cancel = true;
-                    var currentPath = Path.GetDirectoryName(currentDocumentPath);
-                    navUri = navUri.Replace(virtualHostProtocol + virtualHostName, currentPath);
-                    navUri = Uri.UnescapeDataString(navUri);
-                    openLocalFileInNppAction(navUri);
+                    using (System.Diagnostics.Process.Start(
+                        new System.Diagnostics.ProcessStartInfo(navUri) { UseShellExecute = true })) { }
                 }
-                else if (navUri.StartsWith("http://" + tmpVirtualHostName + "/"))
-                {
-                    // Internal oversized-preview navigation: neither cancel
-                    // (it is our own delivery path) nor force a full reload.
-                }
-                else
-                {
-                    forceFullReload = true;
-                }
+                catch (Exception) { }
             }
         }
 
