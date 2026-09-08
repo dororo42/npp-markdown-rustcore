@@ -244,8 +244,7 @@ fn syntect_span_colors_survive_sanitize() {
     // Token colors are the whole point of native highlighting; the ammonia
     // style-attribute allowlist must keep them (filtered to safe properties).
     assert!(
-        render_default("```rust\nfn main() {}\n```\n")
-            .contains("<span style=\"color"),
+        render_default("```rust\nfn main() {}\n```\n").contains("<span style=\"color"),
         "highlight colors stripped"
     );
 }
