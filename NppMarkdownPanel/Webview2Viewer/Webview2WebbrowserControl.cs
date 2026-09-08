@@ -37,6 +37,8 @@ namespace Webview2Viewer
         public Action AfterInitCompletedAction { get; set; }
         public Action<int> CheckboxToggleAction { get; set; }
         public Action<int> RadioToggleAction { get; set; }
+        /// <summary>Preview viewport top moved: reports the data-line at the top (bidirectional sync).</summary>
+        public Action<int> PreviewScrollAction { get; set; }
 
         private string currentBody;
         private string currentStyle;
@@ -191,6 +193,17 @@ namespace Webview2Viewer
 
                                 window.addEventListener('scrollend', function() {
                                     window.chrome.webview.postMessage('scrollEndUpdate;' + window.scrollY);
+                                    var blocks = document.querySelectorAll('.markdown-body [data-line]');
+                                    var found = null;
+                                    for (var i = 0; i < blocks.length; i++) {
+                                        if (blocks[i].getBoundingClientRect().top <= 140) found = blocks[i];
+                                    }
+                                    if (found) {
+                                        var ln = parseInt(found.getAttribute('data-line'), 10);
+                                        if (!isNaN(ln)) {
+                                            window.chrome.webview.postMessage('previewScroll;' + ln);
+                                        }
+                                    }
                                 });
                             ";
                     await webView.ExecuteScriptAsync(jsScript);
@@ -354,7 +367,7 @@ namespace Webview2Viewer
                             // only picks up .mermaid elements, so convert the
                             // fresh blocks before running it (offline/CDN
                             // failure keeps the styled code block as-is).
-                            "if(typeof mermaid!=='undefined'){document.querySelectorAll('pre > code.language-mermaid').forEach(function(el){var h=document.createElement('div');h.className='mermaid';h.textContent=el.textContent;var p=el.closest('pre');if(p){p.replaceWith(h);}else{el.replaceWith(h);}});mermaid.run();}"
+                            "if(typeof mermaid!=='undefined'){document.querySelectorAll('pre > code.language-mermaid').forEach(function(el){var h=document.createElement('div');h.className='mermaid';var p=el.closest('pre');var ln=p?p.getAttribute('data-line'):null;if(ln)h.setAttribute('data-line',ln);h.textContent=el.textContent;if(p){p.replaceWith(h);}else{el.replaceWith(h);}});mermaid.run();}"
                         );
                         await webView.ExecuteScriptAsync(checkboxToggleScript);
                         await webView.ExecuteScriptAsync(radioToggleScript);
@@ -571,6 +584,23 @@ namespace Webview2Viewer
                         if (RadioToggleAction != null)
                         {
                             RadioToggleAction(lineNo);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                    }
+                }
+                else if (action == "previewScroll" && !blockScrollUpdates)
+                {
+                    // Bidirectional sync: preview reached a new top block.
+                    // blockScrollUpdates also gates this direction (document
+                    // switches / full reloads must not drive the editor).
+                    try
+                    {
+                        int lineNo = int.Parse(splittedParams[1]);
+                        if (PreviewScrollAction != null)
+                        {
+                            PreviewScrollAction(lineNo);
                         }
                     }
                     catch (Exception ex)

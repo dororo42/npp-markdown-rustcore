@@ -23,6 +23,9 @@ namespace NppMarkdownPanel.Webbrowser
         public Action AfterInitCompletedAction { get; set; }
         public Action<int> CheckboxToggleAction { get; set; }
         public Action<int> RadioToggleAction { get; set; }
+        // Bidirectional scroll sync is a WebView2 capability; the IE11 route
+        // keeps the property for interface parity and never reports.
+        public Action<int> PreviewScrollAction { get; set; }
 
         private Action<string> openLocalFileInNppAction;
 

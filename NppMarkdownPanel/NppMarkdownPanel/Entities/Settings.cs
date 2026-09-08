@@ -54,6 +54,9 @@ namespace NppMarkdownPanel.Entities
         public bool EnableThreeStateToggle { get; set; }
         public bool ShowOutline { get; set; }
 
+        /// <summary>v1.2: bidirectional sync 鈥?preview scrolling drives the editor's first visible line.</summary>
+        public bool SyncPreviewToEditor { get; set; }
+
         /// <summary>Preview color theme key (ThemeCatalog: Default/Obsidian/Nord/...).</summary>
         public string PreviewTheme { get; set; }
 

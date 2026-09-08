@@ -1,4 +1,4 @@
-# NppMarkdownPanel · rustcore
+﻿# NppMarkdownPanel · rustcore
 
 [![build](https://github.com/dororo42/npp-markdown-rustcore/actions/workflows/build.yml/badge.svg)](./.github/workflows/build.yml)
 [![license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
@@ -25,6 +25,7 @@
 - **HTML 导出**：菜单「Export HTML…」直接导出；「Export HTML with Images…」为浏览器「另存为网页」式单文件——本地图片 base64 内嵌，离线可看；Settings 可配置每次渲染自动落盘
 - **安全净化**：ammonia 白名单（默认禁 `data:`/`javascript:`，保留 syntect 受控内联样式）
 - **滚动同步锚点**：全块级 `data-line` + 标题 `data-src-line`（与上游 Webview2 控件契约兼容）；光标位于多行块内部时回退最近前驱块，不再静默失联
+- **双向同步滚动**：开启「Synchronize preview scroll to editor」后，在预览面板滚动时编辑器跟随定位到对应源码块（块级粒度，反向只动 first-visible-line 不动光标；自带回声抑制，可与前向同步同时开启；ini `Options → SyncPreviewToEditor`）；mermaid 图块保留 `data-line` 锚点
 - **外链防劫持**：预览中的外部链接一律转交系统浏览器打开，面板内绝不导航外部页面；渲染链失败时显示错误卡片而非静默停更
 - **崩溃隔离**：FFI 边界 `catch_unwind` + 512MB 大栈渲染线程，恶意文档最多返回错误码
 - **双出口**：同一核心编译为 Windows 原生 DLL（路线 A'）或 WASM（路线 C 实验）
@@ -211,9 +212,20 @@ const char* rustrender_version(void);
 | HTML 正则注入锚点 | 原生 `data-sourcepos` + 标签级扫描注入 `data-line` |
 | 二次替换 `javascript:` | ammonia scheme 白名单（不破坏代码块文本） |
 
+### v1.2 更新
+
+**新增**
+
+- **双向同步滚动**：插件菜单「Synchronize preview scroll to editor」（默认关闭）。开启后，在预览面板滚动（scrollend 停止时）→ 编辑器自动滚动到视口顶部对应的源码块。块级粒度；只动 first visible line、不移动光标；内置 ±2 行回声抑制，与「caret / first visible line」前向同步可同时开启不打架。持久化到 ini `Options → SyncPreviewToEditor`。IE11 渲染引擎无此能力（仅 WebView2）。
+
+**修复**
+
+- mermaid 图块转换（`pre > code.language-mermaid → div.mermaid`）现在保留 `data-line` 锚点，图表块不再从滚动同步锚点集合中消失。
+
+---
 ## 🗺 路线图
 
-- [x] Phase 0-1：共享核心 + 50 项测试全绿（core 40 + FFI 10）
+- [x] Phase 0-1：共享核心 + 54 项测试全绿（core 44 + FFI 10）
 - [x] Phase 2：Native DLL（x64/x86）+ C# 集成
 - [x] Phase 4-E1：WASM 出口构建 + JS 粘合层
 - [x] Phase 3-Mermaid：预览面板 mermaid@11 图表渲染（首载与增量更新路径均已接通）

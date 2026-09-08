@@ -36,7 +36,7 @@ namespace NppMarkdownPanel.Forms
                 <body class=""markdown-body"" style=""{2}"">
                 {3}
                 <script>
-                (function(){{if(typeof mermaid==='undefined'){{return;}}var t=document.querySelectorAll('pre > code.language-mermaid');for(var i=0;i<t.length;i++){{var h=document.createElement('div');h.className='mermaid';h.textContent=t[i].textContent;var p=t[i].closest('pre');if(p){{p.replaceWith(h);}}else{{t[i].replaceWith(h);}}}}mermaid.run();}})();
+                (function(){{if(typeof mermaid==='undefined'){{return;}}var t=document.querySelectorAll('pre > code.language-mermaid');for(var i=0;i<t.length;i++){{var h=document.createElement('div');h.className='mermaid';var p=t[i].closest('pre');var ln=p?p.getAttribute('data-line'):null;if(ln)h.setAttribute('data-line',ln);h.textContent=t[i].textContent;if(p){{p.replaceWith(h);}}else{{t[i].replaceWith(h);}}}}mermaid.run();}})();
                 </script>
                 </body>
             </html>
@@ -66,7 +66,7 @@ namespace NppMarkdownPanel.Forms
                     <button id=""outline-toggle"" class=""outline-toggle"" title=""Toggle Outline"" onclick=""document.getElementById('outline-sidebar').classList.toggle('collapsed');this.classList.toggle('collapsed');"">&#9776;</button>
 OUTLINE_SCRIPT_PLACEHOLDER
                     <script>
-                    (function(){{if(typeof mermaid==='undefined'){{return;}}var t=document.querySelectorAll('pre > code.language-mermaid');for(var i=0;i<t.length;i++){{var h=document.createElement('div');h.className='mermaid';h.textContent=t[i].textContent;var p=t[i].closest('pre');if(p){{p.replaceWith(h);}}else{{t[i].replaceWith(h);}}}}mermaid.run();}})();
+                    (function(){{if(typeof mermaid==='undefined'){{return;}}var t=document.querySelectorAll('pre > code.language-mermaid');for(var i=0;i<t.length;i++){{var h=document.createElement('div');h.className='mermaid';var p=t[i].closest('pre');var ln=p?p.getAttribute('data-line'):null;if(ln)h.setAttribute('data-line',ln);h.textContent=t[i].textContent;if(p){{p.replaceWith(h);}}else{{t[i].replaceWith(h);}}}}mermaid.run();}})();
                     </script>
                 </body>
             </html>
@@ -152,6 +152,7 @@ OUTLINE_SCRIPT_PLACEHOLDER
         private volatile bool cleanupStarted;
         private Action<int> checkboxToggleHandler;
         private Action<int> radioToggleHandler;
+        private Action<int> previewScrollHandler;
 
         public void SetCheckboxToggleHandler(Action<int> handler)
         {
@@ -168,6 +169,15 @@ OUTLINE_SCRIPT_PLACEHOLDER
             if (webbrowserControl != null)
             {
                 webbrowserControl.RadioToggleAction = handler;
+            }
+        }
+
+        public void SetPreviewScrollHandler(Action<int> handler)
+        {
+            previewScrollHandler = handler;
+            if (webbrowserControl != null)
+            {
+                webbrowserControl.PreviewScrollAction = handler;
             }
         }
 
@@ -278,6 +288,7 @@ OUTLINE_SCRIPT_PLACEHOLDER
             webbrowserControl.StatusTextChangedAction = (status) => { toolStripStatusLabel1.Text = status; };
             webbrowserControl.CheckboxToggleAction = checkboxToggleHandler;
             webbrowserControl.RadioToggleAction = radioToggleHandler;
+            webbrowserControl.PreviewScrollAction = previewScrollHandler;
         }
 
         private RenderResult RenderHtmlInternal(string currentText, string filepath)

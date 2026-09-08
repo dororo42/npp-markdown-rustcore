@@ -38,6 +38,12 @@ namespace NppMarkdownPanel
 
         private string iniFilePath;
 
+        // Bidirectional sync (v1.2): preview scroll -> editor scroll.
+        // lastDrivenLine records the line we wrote back to Scintilla; a
+        // previewScroll report within +/-2 lines of it is our own echo
+        // (editor scrolled -> preview followed -> scrollend fired again)
+        // and must be dropped or the two panes oscillate forever.
+        private int lastDrivenLine = -1;
         private int lastCaretPosition;
         private bool syncViewWithCaretPosition;
 
@@ -67,6 +73,7 @@ namespace NppMarkdownPanel
             previewForm = (MarkdownPreviewForm)viewerInterface;
             previewForm.SetCheckboxToggleHandler(ToggleCheckboxAtLine);
             previewForm.SetRadioToggleHandler(ToggleRadioAtLine);
+            previewForm.SetPreviewScrollHandler(OnPreviewScrolled);
             renderTimer = new Timer();
             renderTimer.Interval = renderRefreshRateMilliSeconds;
             renderTimer.Tick += OnRenderTimerElapsed;
@@ -291,6 +298,21 @@ namespace NppMarkdownPanel
 
         private void ScrollToElementAtLineNo(int lineNo)
         {
+            // Echo suppression: a preview-driven editor scroll also raises
+            // SCN_UPDATEUI. Without this gate the forward direction would
+            // scroll the preview right back and the two directions would
+            // fight (each reporting the other's movement as fresh input).
+            if (syncPreviewToEditor && lastDrivenLine >= 0 && lineNo >= 0)
+            {
+                if (Math.Abs(lineNo - lastDrivenLine) <= 2)
+                    return;
+                lastDrivenLine = -1;
+            }
+            // Record the line we are about to drive the preview to, so the
+            // scrollend report caused by this very scroll is recognized as
+            // our own echo and suppressed exactly (no 1-2 line jitter).
+            if (syncPreviewToEditor && lineNo >= 0)
+                lastDrivenLine = lineNo;
             viewerInterface.ScrollToElementWithLineNo(lineNo);
         }
 
@@ -397,20 +419,24 @@ namespace NppMarkdownPanel
         }
 
         // N++ plugin menus are flat (no submenus): the 7 preview theme radio
-        // items + the 3 dark-mode-board radio items occupy slots 6..15.
-        private const int FirstThemeItemIndex = 6;
+        // items + the 3 dark-mode-board radio items occupy slots 7..16
+        // (slot 4 = preview-scroll sync toggle since v1.2).
+        private const int FirstThemeItemIndex = 7;
 
         public void InitCommandMenu()
         {
             syncViewWithCaretPosition = (Win32.GetPrivateProfileInt("Options", "SyncViewWithCaretPosition", 0, iniFilePath) != 0);
             syncViewWithFirstVisibleLine = (Win32.GetPrivateProfileInt("Options", "SyncWithFirstVisibleLine", 0, iniFilePath) != 0);
+            syncPreviewToEditor = (Win32.GetPrivateProfileInt("Options", "SyncPreviewToEditor", 0, iniFilePath) != 0);
+            settings.SyncPreviewToEditor = syncPreviewToEditor;
             showOutline = PluginUtils.ReadIniBool("Options", "ShowOutline", iniFilePath, false);
             PluginBase.SetCommand(0, "Toggle &Markdown Panel", TogglePanelVisible);
             PluginBase.SetCommand(1, "---", null);
             PluginBase.SetCommand(2, "Synchronize with &caret position", SyncViewWithCaret, syncViewWithCaretPosition);
             PluginBase.SetCommand(3, "Synchronize with &first visible line in editor", SyncViewWithFirstVisibleLine, syncViewWithFirstVisibleLine);
-            PluginBase.SetCommand(4, "Show &outline", ToggleShowOutline, showOutline);
-            PluginBase.SetCommand(5, "---", null);
+            PluginBase.SetCommand(4, "Synchronize preview &scroll to editor", SyncPreviewToEditorToggle, syncPreviewToEditor);
+            PluginBase.SetCommand(5, "Show &outline", ToggleShowOutline, showOutline);
+            PluginBase.SetCommand(6, "---", null);
             for (int i = 0; i < ThemeCatalog.Themes.Length; i++)
             {
                 var themeKey = ThemeCatalog.Themes[i].Key;
@@ -528,6 +554,45 @@ namespace NppMarkdownPanel
             if (syncViewWithCaretPosition) ScrollToElementAtLineNo(scintillaGateway.GetCurrentLineNumber());
         }
 
+        private void SyncPreviewToEditorToggle()
+        {
+            syncPreviewToEditor = !syncPreviewToEditor;
+            settings.SyncPreviewToEditor = syncPreviewToEditor;
+            SaveSettings();
+            // _funcItems.Items is positional (registration order); the toggle
+            // sits at slot 4, right after the two editor->preview sync modes.
+            Win32.CheckMenuItem(Win32.GetMenu(PluginBase.nppData._nppHandle), PluginBase._funcItems.Items[4]._cmdID, Win32.MF_BYCOMMAND | (syncPreviewToEditor ? Win32.MF_CHECKED : Win32.MF_UNCHECKED));
+            if (!syncPreviewToEditor)
+                lastDrivenLine = -1;
+        }
+
+        /// <summary>
+        /// Bidirectional sync: the preview viewport top reached a new block
+        /// (data-line reported by the WebView2 control). Scroll the editor
+        /// so that block's source line is at the top. Echo suppression:
+        /// reports within +/-2 lines of the last line we drove are dropped.
+        /// </summary>
+        private void OnPreviewScrolled(int sourceLine)
+        {
+            if (!syncPreviewToEditor) return;
+            if (sourceLine <= 0) return;
+            var gw = scintillaGatewayFactory();
+            // data-line is 1-based; Scintilla doc lines are 0-based.
+            int docLine = sourceLine - 1;
+            if (docLine < 0) docLine = 0;
+            int delta = lastDrivenLine >= 0 ? Math.Abs(docLine - lastDrivenLine) : int.MaxValue;
+            if (delta <= 2)
+                return; // our own echo (forward sync following this write-back)
+            lastDrivenLine = docLine;
+            // Word wrap: a doc line can occupy several display lines; the
+            // editor must scroll to the DISPLAY position of the doc line.
+            int displayLine = gw.VisibleFromDocLine(docLine);
+            if (displayLine >= 0)
+            {
+                gw.SetFirstVisibleLine(displayLine);
+            }
+        }
+
         private void SyncViewWithFirstVisibleLine()
         {
             syncViewWithFirstVisibleLine = !syncViewWithFirstVisibleLine;
@@ -562,6 +627,7 @@ namespace NppMarkdownPanel
         {
             Win32.WritePrivateProfileString("Options", "SyncViewWithCaretPosition", syncViewWithCaretPosition ? "1" : "0", iniFilePath);
             Win32.WritePrivateProfileString("Options", "SyncWithFirstVisibleLine", syncViewWithFirstVisibleLine ? "1" : "0", iniFilePath);
+            Win32.WritePrivateProfileString("Options", "SyncPreviewToEditor", syncPreviewToEditor ? "1" : "0", iniFilePath);
             SaveSettings();
         }
 
@@ -581,6 +647,7 @@ namespace NppMarkdownPanel
             Win32.WriteIniValue("Options", "HtmlSourcePreview", settings.HtmlSourcePreview.ToString(), iniFilePath);
             Win32.WriteIniValue("Options", "RenderingEngine", settings.RenderingEngine, iniFilePath);
             Win32.WriteIniValue("Options", "ShowOutline", settings.ShowOutline.ToString(), iniFilePath);
+            Win32.WriteIniValue("Options", "SyncPreviewToEditor", settings.SyncPreviewToEditor.ToString(), iniFilePath);
             Win32.WriteIniValue("Options", "PreviewTheme", ThemeCatalog.Find(settings.PreviewTheme).Key, iniFilePath);
             Win32.WriteIniValue("Options", "PreviewDarkMode", settings.PreviewDarkMode.ToString(), iniFilePath);
         }

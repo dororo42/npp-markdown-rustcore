@@ -24,6 +24,8 @@ namespace PanelCommon
         Action RenderingDoneAction { get; set; }
         Action AfterInitCompletedAction { get; set; }
         Action<int> CheckboxToggleAction { get; set; }
+        /// <summary>Preview scrolled: reports the source line (data-line) currently at the viewport top.</summary>
+        Action<int> PreviewScrollAction { get; set; }
         Action<int> RadioToggleAction { get; set; }
 
         void Dispose();
