@@ -216,14 +216,54 @@ fn sanitize_keeps_benign_raw_html() {
 }
 
 #[test]
+fn code_block_style_is_inside_the_open_tag() {
+    // Regression (v1.0): write_pre_tag emitted the closing `>` via
+    // write_open_tag and *then* appended ` style="background-color:...;" >`,
+    // so the style text leaked into the block as visible content.
+    let h = render_default("```text\nK3_WIFI=\"true\"  # comment\n```\n");
+    assert!(!h.contains("> style=\""), "style leaked as content: {h}");
+    assert!(h.contains("<pre"), "{h}");
+    assert!(h.contains("K3_WIFI"), "{h}");
+}
+
+#[test]
+fn syntect_pre_background_survives_sanitize() {
+    let h = render_default("```text\nhello\n```\n");
+    assert!(h.contains("<pre"), "{h}");
+    // InspiredGitHub (default light theme) background must stay inside the
+    // <pre> open tag — not stripped by ammonia, not leaked as text.
+    assert!(
+        h.contains("<pre data-sourcepos=") && h.contains("style=\"background-color:#ffffff;\""),
+        "pre theme background missing: {h}"
+    );
+}
+
+#[test]
+fn syntect_span_colors_survive_sanitize() {
+    // Token colors are the whole point of native highlighting; the ammonia
+    // style-attribute allowlist must keep them (filtered to safe properties).
+    let h = render_default("```rust\nfn main() {}\n```\n");
+    assert!(h.contains("<span style=\"color"), "highlight colors stripped: {h}");
+}
+
+#[test]
+fn table_alignment_survives_sanitize() {
+    // comrak (cmark-gfm parity) emits align="center" on td/th; the sanitizer
+    // must keep it. If comrak ever switches to style="text-align:...", this
+    // test fails loudly instead of silently dropping alignment.
+    let h = render_default("| a | b |\n|:-:|--:|\n| 1 | 2 |\n");
+    assert!(h.contains("align=\"center\""), "{h}");
+    assert!(h.contains("align=\"right\""), "{h}");
+}
+
+#[test]
 fn sanitize_syntect_styles_are_whitelisted_only() {
     let h = render_default("```rust\nfn main() {}\n```\n");
-    // with syntect-onig (default) the code is highlighted with inline styles
-    if h.contains("style=") {
-        assert!(!h.contains("position"), "{h}");
-        assert!(!h.contains("width"), "{h}");
-    }
-    assert!(h.contains("fn"), "{h}");
+    // Inline styles must survive sanitization (highlighting depends on them),
+    // but only with safe CSS properties.
+    assert!(h.contains("style="), "inline styles were stripped: {h}");
+    assert!(!h.contains("position"), "{h}");
+    assert!(!h.contains("width"), "{h}");
 }
 
 #[test]

@@ -280,6 +280,11 @@ impl SyntaxHighlighterAdapter for CachedAdapter {
 
     /// `<pre>` opener, carrying comrak's attributes plus the theme background
     /// (same semantics as comrak's own SyntectAdapter).
+    ///
+    /// The background style is merged into `attributes` *before* the tag is
+    /// written, so the open tag closes exactly once. (An earlier version
+    /// appended ` style="..." >` after `write_open_tag` had already emitted
+    /// the closing `>`, leaking the style text into the block content.)
     fn write_pre_tag(
         &self,
         output: &mut dyn fmt::Write,
@@ -294,19 +299,13 @@ impl SyntaxHighlighterAdapter for CachedAdapter {
             "background-color:#{:02x}{:02x}{:02x};",
             colour.r, colour.g, colour.b
         );
-        let merged = match attributes.get_mut("style") {
-            Some(existing) => {
-                existing.to_mut().push_str(&bg_style);
-                None
+        match attributes.get_mut("style") {
+            Some(existing) => existing.to_mut().push_str(&bg_style),
+            None => {
+                attributes.insert("style", std::borrow::Cow::Owned(bg_style));
             }
-            None => Some(bg_style),
-        };
-        write_open_tag(output, "pre", &attributes)?;
-        if let Some(style) = merged {
-            // style was absent before — emit it now.
-            write!(output, " style=\"{}\"", escape_attr(&style))?;
         }
-        output.write_char('>')
+        write_open_tag(output, "pre", &attributes)
     }
 
     fn write_code_tag(
