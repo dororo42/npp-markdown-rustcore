@@ -122,6 +122,7 @@ namespace NppMarkdownPanel
             settings.SupportedFileExt = Win32.ReadIniValue("Options", "SupportedFileExt", iniFilePath, Settings.DEFAULT_SUPPORTED_FILE_EXT);
             settings.SupportFilesWithNoExt = PluginUtils.ReadIniBool("Options", "SupportFilesWithNoExt", iniFilePath);
             settings.AllowAllExtensions = PluginUtils.ReadIniBool("Options", "AllowAllExtensions", iniFilePath);
+            settings.HtmlSourcePreview = PluginUtils.ReadIniBool("Options", "HtmlSourcePreview", iniFilePath, true);
             settings.IsDarkModeEnabled = IsDarkModeEnabled();
             settings.AutoShowPanel = PluginUtils.ReadIniBool("Options", "AutoShowPanel", iniFilePath);
             settings.EnableThreeStateToggle = PluginUtils.ReadIniBool("Options", "EnableThreeStateToggle", iniFilePath);
@@ -577,6 +578,7 @@ namespace NppMarkdownPanel
             Win32.WriteIniValue("Options", "AutoShowPanel", settings.AutoShowPanel.ToString(), iniFilePath);
             Win32.WriteIniValue("Options", "EnableThreeStateToggle", settings.EnableThreeStateToggle.ToString(), iniFilePath);
             Win32.WriteIniValue("Options", "AllowAllExtensions", settings.AllowAllExtensions.ToString(), iniFilePath);
+            Win32.WriteIniValue("Options", "HtmlSourcePreview", settings.HtmlSourcePreview.ToString(), iniFilePath);
             Win32.WriteIniValue("Options", "RenderingEngine", settings.RenderingEngine, iniFilePath);
             Win32.WriteIniValue("Options", "ShowOutline", settings.ShowOutline.ToString(), iniFilePath);
             Win32.WriteIniValue("Options", "PreviewTheme", ThemeCatalog.Find(settings.PreviewTheme).Key, iniFilePath);

@@ -38,6 +38,15 @@ namespace NppMarkdownPanel.Entities
         public string SupportedFileExt { get; set; }
         public bool SupportFilesWithNoExt { get; set; }
         public bool AllowAllExtensions { get; set; }
+
+        /// <summary>
+        /// v1.1: preview .html/.htm source files as web pages (skip the
+        /// Markdown pipeline entirely). The file is rendered as-is by the
+        /// embedded browser — equivalent to opening it in a browser — so any
+        /// scripts inside the document will run. Independent of the Markdown
+        /// extension list (SupportedFileExt).
+        /// </summary>
+        public bool HtmlSourcePreview { get; set; }
         public bool IsDarkModeEnabled { get; set; }
         public bool ShowToolbar { get; set; }
         public bool ShowStatusbar { get; set; }

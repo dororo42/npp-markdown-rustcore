@@ -161,6 +161,13 @@ pub fn sanitize(html: &str) -> Result<String, String> {
     ] {
         tag_attributes.insert(t, class_only.clone());
     }
+    // syntect inline styles (native highlighting) live on these tags: the
+    // theme background on `<pre>` and per-token colors on `<span>`/`<code>`.
+    // CSS property values are still restricted by `filter_style_properties`
+    // below; without "style" here, ammonia would strip every highlight color.
+    for t in ["code", "pre", "span"] {
+        tag_attributes.insert(t, HashSet::from(["class", "style"]));
+    }
     tag_attributes.insert(
         "a",
         HashSet::from(["href", "hreflang", "class", "data-wikilink", "name"]),

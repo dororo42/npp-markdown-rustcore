@@ -15,6 +15,7 @@
 ## ✨ 特性
 
 - **完整 GFM**：表格、任务列表、删除线、自动链接、脚注、描述列表、上标
+- **HTML 源码预览**（v1.1）：打开 `.html`/`.htm` 文件时按网页直接渲染（跳过 Markdown 管线），相对资源按源文件目录解析；Settings 的 `HtmlSourcePreview` 可关闭
 - **GitHub Alerts / Obsidian Callout**：`> [!NOTE]` 原生渲染（comrak `alerts`）
 - **Obsidian 双链**：`[[Page|别名]]`（`data-wikilink` 属性供宿主拦截跳转）
 - **代码高亮**：syntect（onig）内联样式 + **进程级代码块缓存**（LRU 逐出，大文档不清空热缓存），配色随预览主题联动
@@ -50,6 +51,20 @@
 ```
 
 渲染管线：`comrak 解析 → AST heading 提取 → syntect 高亮(缓存) → data-line 锚点注入 → ammonia 净化`
+
+## 🆕 v1.1 更新
+
+**修复**
+
+- **代码块 style 泄漏**：`write_pre_tag` 在开标签闭合后又追加 ` style="background-color:...;"`，导致每个代码块首行前出现 `style="background-color:#ffffff;">` 字样文本（v1.0 起每个代码块必现）。现改为合并进属性后一次性输出。
+- **语法高亮配色失效**：sanitize 白名单从未放行 `style` 属性，ammonia 把 syntect 全部内联着色剥除（代码可显示但无色）；且 `filter_style_properties` CSS 白名单因属性未放行而整体无效。现已给 `pre`/`code`/`span` 放行 `style`（CSS 值仍受 `color/background-color/font-weight/font-style/text-decoration` 白名单约束）。
+
+**新增：HTML 源码预览**
+
+- 打开 `.html`/`.htm` 源码文件时预览面板直接按网页渲染（含完整文档骨架的文件原样呈现，HTML 片段套轻量模板），`<img>`/`<script>`/`<link>` 的本地相对引用自动按源文件目录解析。
+- 开关：ini `Options → HtmlSourcePreview`（默认 `true`）；关闭后 `.html/.htm` 回到"非 Markdown 扩展名"提示。
+- ⚠️ **安全提示**：HTML 源码预览不做净化（否则 `<style>`/`<script>` 会被剥除、失去"预览网页"意义）——文档内的脚本会执行，与用浏览器打开该文件等价。请勿预览不可信来源的 HTML 文件。
+- 已知边界：滚动同步/大纲/任务列表回调为 Markdown 专属，HTML 文档不适用；IE11 引擎按 IE 文档模式降级渲染。
 
 ## 📁 项目结构
 
