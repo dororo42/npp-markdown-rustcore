@@ -316,6 +316,14 @@ OUTLINE_SCRIPT_PLACEHOLDER
             if (cached != null)
                 return cached;
 
+            // v1.1: HTML 源码文件 — 跳过 Markdown 管线，按网页直通预览。
+            if (settings.HtmlSourcePreview && IsHtmlSourceFile(filepath))
+            {
+                var htmlResult = RenderHtmlSourcePreview(currentText, filepath);
+                StoreCachedRender(cacheKey, htmlResult);
+                return htmlResult;
+            }
+
             var resultForBrowser = markdownService.ConvertToHtml(currentText, filepath, true);
             // 导出版惰性渲染: 仅在配置了 HtmlFileName 自动落盘时才随预览一起计算,
             // 保存/复制路径按需生成 —— 每次渲染成本减半。
@@ -334,6 +342,110 @@ OUTLINE_SCRIPT_PLACEHOLDER
             var renderResult = new RenderResult(markdownHtmlBrowser, markdownHtmlFileExport, resultForBrowser, markdownStyleContent);
             StoreCachedRender(cacheKey, renderResult);
             return renderResult;
+        }
+
+        // ------------------------------------------------------------------
+        // v1.1: HTML 源码预览（.html/.htm，HtmlSourcePreview 开关，默认开）
+
+        // 完整文档判定：有文档骨架（<!DOCTYPE html 或 <html…>）→ 原样直通；
+        // 否则视为 HTML 片段，套轻量模板（仅 charset + 基础 body 样式，
+        // 不注入 markdown-body / mermaid / outline 等 Markdown 预览设施）。
+        private static readonly Regex FullHtmlDocRegex = new Regex(
+            @"\A\s*(?:<!doctype\s+html|<html[\s>])",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+        // 直通交付的 base 是临时虚拟主机目录，本地相对资源需改写为基于
+        // 源文件目录的 file:/// 绝对 URL，否则 <img src="pic.png"> 之类
+        // 会 404。远程/data:/file:/站点根/锚点/脚本协议跳过；解析或命中
+        // 失败静默保留原引用。双引号与单引号属性分别匹配（互不越界）。
+        private static readonly Regex HtmlLocalRefDqRegex = new Regex(
+            "(?<prefix>(?<![\\w-])(?:src|href|poster)\\s*=\\s*\")(?<url>[^\"]+)(?<sfx>\")",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+        private static readonly Regex HtmlLocalRefSqRegex = new Regex(
+            "(?<prefix>(?<![\\w-])(?:src|href|poster)\\s*=\\s*')(?<url>[^']+)(?<sfx>')",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+        private const string HTML_SNIPPET_TEMPLATE =
+         @"<!DOCTYPE html>
+            <html>
+                <head>
+                    <meta http-equiv=""X-UA-Compatible"" content=""IE=edge""></meta>
+                    <meta http-equiv=""content-type"" content=""text/html; charset=utf-8""></meta>
+                    <title>{0}</title>
+                    <style type=""text/css"" id=""md-preview-style"">
+                    body {{ margin: 16px; font-family: sans-serif; }}
+                    </style>
+                </head>
+                <body>
+                {1}
+                </body>
+            </html>
+            ";
+
+        private static bool IsHtmlSourceFile(string filepath)
+        {
+            var ext = (Path.GetExtension(filepath) ?? "").ToLowerInvariant();
+            return ext == ".html" || ext == ".htm";
+        }
+
+        /// <summary>
+        /// HTML 源码直通预览：完整文档原样呈现（文档内的脚本会执行，等同
+        /// 浏览器打开），片段套轻量模板；导出即改写后的原文。
+        /// </summary>
+        private RenderResult RenderHtmlSourcePreview(string currentText, string filepath)
+        {
+            var text = currentText ?? "";
+            var rewritten = RewriteLocalRefs(text, Path.GetDirectoryName(filepath));
+
+            string browserHtml;
+            if (FullHtmlDocRegex.IsMatch(rewritten))
+            {
+                browserHtml = rewritten;
+            }
+            else
+            {
+                browserHtml = string.Format(HTML_SNIPPET_TEMPLATE,
+                    Path.GetFileName(filepath), rewritten);
+            }
+            return new RenderResult(browserHtml, browserHtml, text, "");
+        }
+
+        private string RewriteLocalRefs(string html, string baseDir)
+        {
+            if (string.IsNullOrEmpty(html) || string.IsNullOrEmpty(baseDir))
+                return html;
+            return HtmlLocalRefSqRegex.Replace(
+                HtmlLocalRefDqRegex.Replace(html, match => RewriteOneRef(match, baseDir)),
+                match => RewriteOneRef(match, baseDir));
+        }
+
+        private string RewriteOneRef(Match match, string baseDir)
+        {
+            var url = match.Groups["url"].Value;
+            if (string.IsNullOrEmpty(url))
+                return match.Value;
+            var head = url.Trim().ToLowerInvariant();
+            if (head.StartsWith("http:") || head.StartsWith("https:") ||
+                head.StartsWith("data:") || head.StartsWith("file:") ||
+                head.StartsWith("javascript:") || url.StartsWith("#") ||
+                url.StartsWith("/"))
+                return match.Value;
+            try
+            {
+                // 去掉查询串并解码（空格等在 HTML 里常写成 %20）。
+                var local = Uri.UnescapeDataString(url.Split('?')[0]);
+                var full = Path.GetFullPath(Path.Combine(baseDir, local));
+                if (!File.Exists(full))
+                    return match.Value;
+                return match.Groups["prefix"].Value
+                     + new Uri(full).AbsoluteUri
+                     + match.Groups["sfx"].Value;
+            }
+            catch (Exception)
+            {
+                return match.Value;
+            }
         }
 
         private string GetCssContent(bool forceLightTheme = false)
@@ -643,6 +755,11 @@ OUTLINE_SCRIPT_PLACEHOLDER
         {
             if (settings.AllowAllExtensions) return true;
             var currentExtension = Path.GetExtension(filename).ToLower();
+            // v1.1: HTML 源码预览 — .html/.htm 不占 Markdown 扩展列表，
+            // 由独立开关 HtmlSourcePreview 控制（默认开启）。
+            if (settings.HtmlSourcePreview &&
+                (currentExtension == ".html" || currentExtension == ".htm"))
+                return true;
             var matchExtensionList = false;
             try
             {
