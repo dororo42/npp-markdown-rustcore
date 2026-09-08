@@ -1,4 +1,4 @@
-﻿# NppMarkdownPanel · rustcore
+# NppMarkdownPanel · rustcore
 
 [![build](https://github.com/dororo42/npp-markdown-rustcore/actions/workflows/build.yml/badge.svg)](./.github/workflows/build.yml)
 [![license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
