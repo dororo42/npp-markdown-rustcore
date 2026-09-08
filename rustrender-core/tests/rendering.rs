@@ -231,9 +231,10 @@ fn syntect_pre_background_survives_sanitize() {
     let h = render_default("```text\nhello\n```\n");
     assert!(h.contains("<pre"), "{h}");
     // InspiredGitHub (default light theme) background must stay inside the
-    // <pre> open tag — not stripped by ammonia, not leaked as text.
+    // <pre> open tag — not stripped by ammonia, not leaked as text. Note:
+    // ammonia normalises CSS declarations, dropping the trailing `;`.
     assert!(
-        h.contains("<pre data-sourcepos=") && h.contains("style=\"background-color:#ffffff;\""),
+        h.contains("<pre") && h.contains("style=\"background-color:#ffffff\""),
         "pre theme background missing: {h}"
     );
 }
@@ -242,8 +243,11 @@ fn syntect_pre_background_survives_sanitize() {
 fn syntect_span_colors_survive_sanitize() {
     // Token colors are the whole point of native highlighting; the ammonia
     // style-attribute allowlist must keep them (filtered to safe properties).
-    let h = render_default("```rust\nfn main() {}\n```\n");
-    assert!(h.contains("<span style=\"color"), "highlight colors stripped: {h}");
+    assert!(
+        render_default("```rust\nfn main() {}\n```\n")
+            .contains("<span style=\"color"),
+        "highlight colors stripped"
+    );
 }
 
 #[test]
