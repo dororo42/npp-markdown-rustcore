@@ -188,23 +188,77 @@ namespace Webview2Viewer
             {
                 ExecuteWebviewAction(new Action(async () =>
                 {
-                    // inject JS to listen to the "Scrollend" event
+                    // inject JS to listen to the "Scrollend"/"Scroll" events
+                    // (bidirectional sync): anchor topology cache (W3) built
+                    // once per render and rebuilt debounced on DOM mutation;
+                    // top block resolved by binary search over cached page
+                    // offsets (W2: measured content-start threshold, top-of-
+                    // page boundary reports the first anchor); continuous
+                    // follow via rAF-throttled scroll listener (W4) plus the
+                    // scrollend precise report.
                     string jsScript = @"
 
-                                window.addEventListener('scrollend', function() {
-                                    window.chrome.webview.postMessage('scrollEndUpdate;' + window.scrollY);
-                                    var blocks = document.querySelectorAll('.markdown-body [data-line]');
-                                    var found = null;
-                                    for (var i = 0; i < blocks.length; i++) {
-                                        if (blocks[i].getBoundingClientRect().top <= 140) found = blocks[i];
+                                (function() {
+                                    var cache = [];
+                                    var dirty = true;
+                                    var rebuildTimer = null;
+                                    var lastReported = -1;
+                                    var rafPending = false;
+                                    function rebuild() {
+                                        cache = [];
+                                        var body = document.querySelector('.markdown-body');
+                                        if (body) {
+                                            var blocks = body.querySelectorAll('[data-line]');
+                                            for (var i = 0; i < blocks.length; i++) {
+                                                var ln = parseInt(blocks[i].getAttribute('data-line'), 10);
+                                                if (isNaN(ln)) continue;
+                                                var r = blocks[i].getBoundingClientRect();
+                                                cache.push({ top: r.top + window.scrollY, ln: ln });
+                                            }
+                                        }
+                                        dirty = false;
                                     }
-                                    if (found) {
-                                        var ln = parseInt(found.getAttribute('data-line'), 10);
-                                        if (!isNaN(ln)) {
-                                            window.chrome.webview.postMessage('previewScroll;' + ln);
+                                    function markDirty() {
+                                        dirty = true;
+                                        if (rebuildTimer) return;
+                                        rebuildTimer = setTimeout(function() { rebuildTimer = null; if (dirty) rebuild(); }, 200);
+                                    }
+                                    function lineAtViewportTop() {
+                                        if (dirty) rebuild();
+                                        if (!cache.length) return null;
+                                        if (window.scrollY <= 1) return cache[0].ln;
+                                        var threshold = cache[0].top + 2;
+                                        var lo = 0, hi = cache.length - 1, ans = 0;
+                                        while (lo <= hi) {
+                                            var mid = (lo + hi) >> 1;
+                                            if (cache[mid].top <= window.scrollY + threshold) { ans = mid; lo = mid + 1; } else { hi = mid - 1; }
+                                        }
+                                        return cache[ans].ln;
+                                    }
+                                    function report(ln) {
+                                        if (ln === null || ln === lastReported) return;
+                                        lastReported = ln;
+                                        window.chrome.webview.postMessage('previewScroll;' + ln);
+                                    }
+                                    window.addEventListener('scroll', function() {
+                                        if (rafPending) return;
+                                        rafPending = true;
+                                        requestAnimationFrame(function() {
+                                            rafPending = false;
+                                            report(lineAtViewportTop());
+                                        });
+                                    }, { passive: true });
+                                    window.addEventListener('scrollend', function() {
+                                        window.chrome.webview.postMessage('scrollEndUpdate;' + window.scrollY);
+                                        report(lineAtViewportTop());
+                                    });
+                                    if (window.MutationObserver) {
+                                        var body = document.querySelector('.markdown-body');
+                                        if (body) {
+                                            new MutationObserver(markDirty).observe(body, { childList: true, subtree: true, characterData: true });
                                         }
                                     }
-                                });
+                                })();
                             ";
                     await webView.ExecuteScriptAsync(jsScript);
                 }));

@@ -54,6 +54,12 @@ namespace NppMarkdownPanel
         // editor's first visible line. Persisted to ini Options→SyncPreviewToEditor.
         private bool syncPreviewToEditor;
 
+        // W5: after a reverse write-back the forward direction is suppressed
+        // for this window — it is both the echo backstop and the direction
+        // lock that keeps the preview from fighting the user's drag.
+        private const int ReverseWriteQuietMs = 300;
+        private int lastReverseWriteTicks = int.MinValue / 2;
+
         private bool showOutline;
 
         private bool nppReady;
@@ -178,7 +184,12 @@ namespace NppMarkdownPanel
                     {
                         var firstVisibleLine = scintillaGateway.GetFirstVisibleLine();
                         currentFirstVisibleLine = firstVisibleLine;
-                        ScrollToElementAtLineNo(firstVisibleLine);
+                        // W1: reverse sync compares doc lines; under word-wrap
+                        // a display line drifts from its doc line, so convert
+                        // before driving/recording when reverse sync is on.
+                        ScrollToElementAtLineNo(syncPreviewToEditor
+                            ? scintillaGateway.DocLineFromVisible(firstVisibleLine)
+                            : firstVisibleLine);
                     }
                 }
             }
@@ -302,6 +313,11 @@ namespace NppMarkdownPanel
 
         private void ScrollToElementAtLineNo(int lineNo)
         {
+            // W5 direction lock: a preview-driven write-back just happened;
+            // hold the forward direction off so it cannot fight the user's
+            // in-flight preview drag (window refreshes on every report).
+            if (syncPreviewToEditor && Environment.TickCount - lastReverseWriteTicks < ReverseWriteQuietMs)
+                return;
             // Echo suppression: a preview-driven editor scroll also raises
             // SCN_UPDATEUI. Without this gate the forward direction would
             // scroll the preview right back and the two directions would
@@ -588,6 +604,8 @@ namespace NppMarkdownPanel
             if (delta <= 2)
                 return; // our own echo (forward sync following this write-back)
             lastDrivenLine = docLine;
+            // W5: open the forward-suppression window from this write-back.
+            lastReverseWriteTicks = Environment.TickCount;
             // Word wrap: a doc line can occupy several display lines; the
             // editor must scroll to the DISPLAY position of the doc line.
             int displayLine = gw.VisibleFromDocLine(docLine);
@@ -605,7 +623,11 @@ namespace NppMarkdownPanel
                 SyncViewWithCaret();
             Win32.CheckMenuItem(Win32.GetMenu(PluginBase.nppData._nppHandle), PluginBase._funcItems.Items[3]._cmdID, Win32.MF_BYCOMMAND | (syncViewWithFirstVisibleLine ? Win32.MF_CHECKED : Win32.MF_UNCHECKED));
             var scintillaGateway = scintillaGatewayFactory();
-            if (syncViewWithFirstVisibleLine) ScrollToElementAtLineNo(scintillaGateway.GetFirstVisibleLine());
+            // W1: same display→doc conversion as the SCN_UPDATEUI path.
+            if (syncViewWithFirstVisibleLine)
+                ScrollToElementAtLineNo(syncPreviewToEditor
+                    ? scintillaGateway.DocLineFromVisible(scintillaGateway.GetFirstVisibleLine())
+                    : scintillaGateway.GetFirstVisibleLine());
         }
 
         private void ToggleShowOutline()
