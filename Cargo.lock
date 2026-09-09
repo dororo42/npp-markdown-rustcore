@@ -691,7 +691,7 @@ checksum = "6b1e7f9a428571be2dc5bc0505c13fb6bf936822b894ec87abf8a08a4e51742d"
 
 [[package]]
 name = "rustrender-core"
-version = "1.2.0"
+version = "1.2.1"
 dependencies = [
  "ammonia",
  "comrak",
@@ -701,14 +701,14 @@ dependencies = [
 
 [[package]]
 name = "rustrender-native"
-version = "1.2.0"
+version = "1.2.1"
 dependencies = [
  "rustrender-core",
 ]
 
 [[package]]
 name = "rustrender-wasm"
-version = "1.2.0"
+version = "1.2.1"
 dependencies = [
  "js-sys",
  "rustrender-core",
