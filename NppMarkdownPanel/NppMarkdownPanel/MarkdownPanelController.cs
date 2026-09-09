@@ -50,6 +50,10 @@ namespace NppMarkdownPanel
         private int currentFirstVisibleLine;
         private bool syncViewWithFirstVisibleLine;
 
+        // Bidirectional sync: preview scroll (scrollend report) drives the
+        // editor's first visible line. Persisted to ini Options→SyncPreviewToEditor.
+        private bool syncPreviewToEditor;
+
         private bool showOutline;
 
         private bool nppReady;
@@ -608,7 +612,8 @@ namespace NppMarkdownPanel
         {
             showOutline = !showOutline;
             settings.ShowOutline = showOutline;
-            Win32.CheckMenuItem(Win32.GetMenu(PluginBase.nppData._nppHandle), PluginBase._funcItems.Items[4]._cmdID, Win32.MF_BYCOMMAND | (showOutline ? Win32.MF_CHECKED : Win32.MF_UNCHECKED));
+            // Slot 5 since v1.2 inserted the preview-scroll sync toggle at slot 4.
+            Win32.CheckMenuItem(Win32.GetMenu(PluginBase.nppData._nppHandle), PluginBase._funcItems.Items[5]._cmdID, Win32.MF_BYCOMMAND | (showOutline ? Win32.MF_CHECKED : Win32.MF_UNCHECKED));
             if (isPanelVisible) RenderMarkdownDirect();
         }
 
