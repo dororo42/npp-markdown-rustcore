@@ -15,7 +15,7 @@ namespace PanelCommon
         void SetContent(string content, string body, string style, string currentDocumentPath);
         void CurrentDocumentRenamed(string newDocumentPath);
         void SetZoomLevel(int zoomLevel);
-        void ScrollToElementWithLineNo(int lineNo);
+        void ScrollToElementWithLineNo(int lineNo, bool scrollToEnd);
         string GetRenderingEngineName();
 
         Bitmap MakeScreenshot();
@@ -24,8 +24,12 @@ namespace PanelCommon
         Action RenderingDoneAction { get; set; }
         Action AfterInitCompletedAction { get; set; }
         Action<int> CheckboxToggleAction { get; set; }
-        /// <summary>Preview scrolled: reports the source line (data-line) currently at the viewport top.</summary>
-        Action<int> PreviewScrollAction { get; set; }
+        /// <summary>
+        /// Preview scrolled: reports the source line (data-line) currently at
+        /// the viewport top. <paramref name="atBottom"/> is true when the
+        /// preview reached the end of the page (bottom lock for reverse sync).
+        /// </summary>
+        Action<int, bool> PreviewScrollAction { get; set; }
         Action<int> RadioToggleAction { get; set; }
 
         void Dispose();

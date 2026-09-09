@@ -152,7 +152,7 @@ OUTLINE_SCRIPT_PLACEHOLDER
         private volatile bool cleanupStarted;
         private Action<int> checkboxToggleHandler;
         private Action<int> radioToggleHandler;
-        private Action<int> previewScrollHandler;
+        private Action<int, bool> previewScrollHandler;
 
         public void SetCheckboxToggleHandler(Action<int> handler)
         {
@@ -172,7 +172,7 @@ OUTLINE_SCRIPT_PLACEHOLDER
             }
         }
 
-        public void SetPreviewScrollHandler(Action<int> handler)
+        public void SetPreviewScrollHandler(Action<int, bool> handler)
         {
             previewScrollHandler = handler;
             if (webbrowserControl != null)
@@ -602,11 +602,11 @@ OUTLINE_SCRIPT_PLACEHOLDER
             }
         }
 
-        public void ScrollToElementWithLineNo(int lineNo)
+        public void ScrollToElementWithLineNo(int lineNo, bool scrollToEnd)
         {
             if (webbrowserControl == null) return;
 
-            webbrowserControl.ScrollToElementWithLineNo((int)lineNo);
+            webbrowserControl.ScrollToElementWithLineNo(lineNo, scrollToEnd);
         }
 
         protected override void WndProc(ref Message m)

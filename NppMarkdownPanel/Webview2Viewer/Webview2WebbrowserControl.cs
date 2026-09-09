@@ -37,8 +37,12 @@ namespace Webview2Viewer
         public Action AfterInitCompletedAction { get; set; }
         public Action<int> CheckboxToggleAction { get; set; }
         public Action<int> RadioToggleAction { get; set; }
-        /// <summary>Preview viewport top moved: reports the data-line at the top (bidirectional sync).</summary>
-        public Action<int> PreviewScrollAction { get; set; }
+        /// <summary>
+        /// Preview viewport top moved: reports the data-line at the top
+        /// (bidirectional sync). The flag is true when the preview reached
+        /// the end of the page (bottom lock for the reverse direction).
+        /// </summary>
+        public Action<int, bool> PreviewScrollAction { get; set; }
 
         private string currentBody;
         private string currentStyle;
@@ -237,8 +241,22 @@ namespace Webview2Viewer
                                     }
                                     function report(ln) {
                                         if (ln === null || ln === lastReported) return;
+                                        // Direction lock (F1): within the
+                                        // programmatic-scroll window a report
+                                        // of the very block we just drove to
+                                        // is our own echo — drop it. A
+                                        // different line means the user is
+                                        // already scrolling: let it through.
+                                        var now = Date.now();
+                                        if (window.__mdProgScroll && now - window.__mdProgScroll < 600
+                                            && (ln === window.__mdProgTarget || window.__mdProgTarget === -1)) return;
                                         lastReported = ln;
-                                        window.chrome.webview.postMessage('previewScroll;' + ln);
+                                        // Bottom lock (F3): tell the host when
+                                        // the preview reached the page end so
+                                        // the editor can scroll to its end.
+                                        var de = document.documentElement;
+                                        var atBottom = window.scrollY + window.innerHeight >= de.scrollHeight - 2;
+                                        window.chrome.webview.postMessage('previewScroll;' + ln + (atBottom ? ';b' : ''));
                                     }
                                     window.addEventListener('scroll', function() {
                                         if (rafPending) return;
@@ -289,12 +307,13 @@ namespace Webview2Viewer
             if (!IsInitialized()) return;
         }
 
-        // Null guard + fallback: when the caret sits on line 2..n of a
-        // multi-line block there is no element with that exact data-line —
-        // fall back to the last block whose data-line <= target so the
-        // preview still scrolls to the enclosing block instead of silently
-        // doing nothing (querySelector returns null → JS error → no scroll).
+        // F1/F3/F4: the script stamps a programmatic-scroll marker (target
+        // line + timestamp) BEFORE scrolling, so the injected scroll listener
+        // can recognize — and drop — the echo of our own drive; {1} is the
+        // bottom-lock flag (editor already at its end → scroll the preview
+        // to the page end instead of block alignment).
         const string scrollScript =
+            "window.__mdProgScroll = Date.now();\n" +
             "var element = document.querySelector('[data-line=\"{0}\"]');\n" +
             "if (!element) {{\n" +
             "    var target = {0};\n" +
@@ -304,7 +323,12 @@ namespace Webview2Viewer
             "        if (!isNaN(ln) && ln <= target) {{ element = candidates[i]; }}\n" +
             "    }}\n" +
             "}}\n" +
-            "if (element) {{\n" +
+            "window.__mdProgTarget = (element && element.getAttribute('data-line')) ? parseInt(element.getAttribute('data-line'), 10) : -1;\n" +
+            "if ({1}) {{\n" +
+            "    var de = document.documentElement;\n" +
+            "    window.scrollTo(0, de.scrollHeight);\n" +
+            "}}\n" +
+            "else if (element) {{\n" +
             "var headerOffset = 10;\n" +
             "var elementPosition = element.getBoundingClientRect().top;\n" +
             "var offsetPosition = elementPosition + window.pageYOffset - headerOffset;\n" +
@@ -360,13 +384,13 @@ namespace Webview2Viewer
             }";
 
 
-        public void ScrollToElementWithLineNo(int lineNo)
+        public void ScrollToElementWithLineNo(int lineNo, bool scrollToEnd)
         {
             if (!IsInitialized()) return;
             if (lineNo <= 0) lineNo = 0;
             ExecuteWebviewAction(new Action(async () =>
             {
-                await webView.ExecuteScriptAsync(string.Format(scrollScript, lineNo));
+                await webView.ExecuteScriptAsync(string.Format(scrollScript, lineNo, scrollToEnd ? "true" : "false"));
             }));
         }
 
@@ -649,12 +673,14 @@ namespace Webview2Viewer
                     // Bidirectional sync: preview reached a new top block.
                     // blockScrollUpdates also gates this direction (document
                     // switches / full reloads must not drive the editor).
+                    // Optional ";b" third segment = preview hit page bottom.
                     try
                     {
                         int lineNo = int.Parse(splittedParams[1]);
+                        bool atBottom = splittedParams.Length > 2 && splittedParams[2] == "b";
                         if (PreviewScrollAction != null)
                         {
-                            PreviewScrollAction(lineNo);
+                            PreviewScrollAction(lineNo, atBottom);
                         }
                     }
                     catch (Exception ex)

@@ -25,7 +25,7 @@ namespace NppMarkdownPanel.Webbrowser
         public Action<int> RadioToggleAction { get; set; }
         // Bidirectional scroll sync is a WebView2 capability; the IE11 route
         // keeps the property for interface parity and never reports.
-        public Action<int> PreviewScrollAction { get; set; }
+        public Action<int, bool> PreviewScrollAction { get; set; }
 
         private Action<string> openLocalFileInNppAction;
 
@@ -84,13 +84,19 @@ namespace NppMarkdownPanel.Webbrowser
             }
         }
 
-        public void ScrollToElementWithLineNo(int lineNo)
+        public void ScrollToElementWithLineNo(int lineNo, bool scrollToEnd)
         {
             Application.DoEvents();
             if (webBrowserPreview.Document != null)
             {
                 try
                 {
+                    if (scrollToEnd)
+                    {
+                        // Bottom lock: jump to the end of the page.
+                        webBrowserPreview.Document.Window.ScrollTo(0, webBrowserPreview.Document.Body.ScrollRectangle.Height);
+                        return;
+                    }
                     var script = "var el = document.querySelector('[data-line=\"{0}\"]'); if (el) { el.getBoundingClientRect().top + window.pageYOffset - 20 } else {{ 0 }}";
                     var offset = webBrowserPreview.Document.InvokeScript("eval", new object[] { string.Format(script, lineNo) });
                     if (offset is int || offset is double)

@@ -54,11 +54,11 @@ namespace NppMarkdownPanel
         // editor's first visible line. Persisted to ini Options→SyncPreviewToEditor.
         private bool syncPreviewToEditor;
 
-        // W5: after a reverse write-back the forward direction is suppressed
-        // for this window — it is both the echo backstop and the direction
-        // lock that keeps the preview from fighting the user's drag.
-        private const int ReverseWriteQuietMs = 300;
-        private int lastReverseWriteTicks = int.MinValue / 2;
+        // F1/F2: the forward echo is suppressed inside the injected preview
+        // JS (programmatic-scroll marker + target match), so no host-side
+        // time window is needed — a quiet window here only produced
+        // "dead-then-burst" stutter while the user scrolls continuously.
+        // The ±2 lastDrivenLine compare below stays as the second layer.
 
         private bool showOutline;
 
@@ -175,7 +175,8 @@ namespace NppMarkdownPanel
                     if (lastCaretPosition != scintillaGateway.GetCurrentPos())
                     {
                         lastCaretPosition = scintillaGateway.GetCurrentPos();
-                        ScrollToElementAtLineNo(scintillaGateway.GetCurrentLineNumber());
+                        // F4: data-line is 1-based; GetCurrentLineNumber is 0-based.
+                        ScrollToElementAtLineNo(scintillaGateway.GetCurrentLineNumber() + 1);
                     }
                 }
                 else if (syncViewWithFirstVisibleLine)
@@ -186,10 +187,9 @@ namespace NppMarkdownPanel
                         currentFirstVisibleLine = firstVisibleLine;
                         // W1: reverse sync compares doc lines; under word-wrap
                         // a display line drifts from its doc line, so convert
-                        // before driving/recording when reverse sync is on.
-                        ScrollToElementAtLineNo(syncPreviewToEditor
-                            ? scintillaGateway.DocLineFromVisible(firstVisibleLine)
-                            : firstVisibleLine);
+                        // first. F4: data-line is 1-based → +1.
+                        ScrollToElementAtLineNo(
+                            scintillaGateway.DocLineFromVisible(firstVisibleLine) + 1);
                     }
                 }
             }
@@ -313,27 +313,36 @@ namespace NppMarkdownPanel
 
         private void ScrollToElementAtLineNo(int lineNo)
         {
-            // W5 direction lock: a preview-driven write-back just happened;
-            // hold the forward direction off so it cannot fight the user's
-            // in-flight preview drag (window refreshes on every report).
-            if (syncPreviewToEditor && Environment.TickCount - lastReverseWriteTicks < ReverseWriteQuietMs)
-                return;
-            // Echo suppression: a preview-driven editor scroll also raises
-            // SCN_UPDATEUI. Without this gate the forward direction would
-            // scroll the preview right back and the two directions would
-            // fight (each reporting the other's movement as fresh input).
+            // Echo suppression (second layer; the first layer lives in the
+            // injected preview JS via the programmatic-scroll marker): a
+            // preview-driven editor scroll also raises SCN_UPDATEUI. Without
+            // this gate the forward direction would scroll the preview right
+            // back and the two directions would fight.
             if (syncPreviewToEditor && lastDrivenLine >= 0 && lineNo >= 0)
             {
                 if (Math.Abs(lineNo - lastDrivenLine) <= 2)
                     return;
                 lastDrivenLine = -1;
             }
-            // Record the line we are about to drive the preview to, so the
-            // scrollend report caused by this very scroll is recognized as
-            // our own echo and suppressed exactly (no 1-2 line jitter).
+            // Record the line we are about to drive the preview to (1-based
+            // source line, same semantics as data-line / OnPreviewScrolled).
             if (syncPreviewToEditor && lineNo >= 0)
                 lastDrivenLine = lineNo;
-            viewerInterface.ScrollToElementWithLineNo(lineNo);
+            // F3 bottom lock: when the editor already shows the end of the
+            // document, align the preview to ITS page end instead of block
+            // start — otherwise the editor can never reach the bottom.
+            bool atBottom = false;
+            if (lineNo > 0)
+            {
+                var gw = scintillaGatewayFactory();
+                int lineCount = gw.GetLineCount();
+                if (lineCount > 0)
+                {
+                    int lastDocDisplay = gw.VisibleFromDocLine(lineCount - 1);
+                    atBottom = gw.GetFirstVisibleLine() + gw.LinesOnScreen() >= lastDocDisplay + 1;
+                }
+            }
+            viewerInterface.ScrollToElementWithLineNo(lineNo, atBottom);
         }
 
         private void ToggleCheckboxAtLine(int lineNo)
@@ -592,23 +601,38 @@ namespace NppMarkdownPanel
         /// so that block's source line is at the top. Echo suppression:
         /// reports within +/-2 lines of the last line we drove are dropped.
         /// </summary>
-        private void OnPreviewScrolled(int sourceLine)
+        private void OnPreviewScrolled(int sourceLine, bool atBottom)
         {
             if (!syncPreviewToEditor) return;
             if (sourceLine <= 0) return;
             var gw = scintillaGatewayFactory();
-            // data-line is 1-based; Scintilla doc lines are 0-based.
-            int docLine = sourceLine - 1;
-            if (docLine < 0) docLine = 0;
-            int delta = lastDrivenLine >= 0 ? Math.Abs(docLine - lastDrivenLine) : int.MaxValue;
-            if (delta <= 2)
+            // Echo compare uses 1-based source lines on both sides (forward
+            // records data-line semantics since F4).
+            int delta = lastDrivenLine >= 0 ? Math.Abs(sourceLine - lastDrivenLine) : int.MaxValue;
+            if (delta <= 2 && !atBottom)
                 return; // our own echo (forward sync following this write-back)
-            lastDrivenLine = docLine;
-            // W5: open the forward-suppression window from this write-back.
-            lastReverseWriteTicks = Environment.TickCount;
+            // F3 bottom lock: the preview reached the end of the page —
+            // scroll the editor to the END of the document so both panes
+            // rest at their bottoms (block alignment alone can never get
+            // there when the last block is long).
+            if (atBottom)
+            {
+                lastDrivenLine = -1;
+                int lineCount = gw.GetLineCount();
+                if (lineCount > 0)
+                {
+                    // Word wrap: scroll to the DISPLAY position of the last
+                    // doc line; Scintilla clamps to its maximum scroll.
+                    int lastDisplay = gw.VisibleFromDocLine(lineCount - 1);
+                    if (lastDisplay >= 0) gw.SetFirstVisibleLine(lastDisplay);
+                }
+                return;
+            }
+            lastDrivenLine = sourceLine;
             // Word wrap: a doc line can occupy several display lines; the
             // editor must scroll to the DISPLAY position of the doc line.
-            int displayLine = gw.VisibleFromDocLine(docLine);
+            // data-line is 1-based; Scintilla doc lines are 0-based.
+            int displayLine = gw.VisibleFromDocLine(sourceLine - 1);
             if (displayLine >= 0)
             {
                 gw.SetFirstVisibleLine(displayLine);
@@ -624,10 +648,10 @@ namespace NppMarkdownPanel
             Win32.CheckMenuItem(Win32.GetMenu(PluginBase.nppData._nppHandle), PluginBase._funcItems.Items[3]._cmdID, Win32.MF_BYCOMMAND | (syncViewWithFirstVisibleLine ? Win32.MF_CHECKED : Win32.MF_UNCHECKED));
             var scintillaGateway = scintillaGatewayFactory();
             // W1: same display→doc conversion as the SCN_UPDATEUI path.
+            // F4: data-line is 1-based → +1.
             if (syncViewWithFirstVisibleLine)
-                ScrollToElementAtLineNo(syncPreviewToEditor
-                    ? scintillaGateway.DocLineFromVisible(scintillaGateway.GetFirstVisibleLine())
-                    : scintillaGateway.GetFirstVisibleLine());
+                ScrollToElementAtLineNo(
+                    scintillaGateway.DocLineFromVisible(scintillaGateway.GetFirstVisibleLine()) + 1);
         }
 
         private void ToggleShowOutline()

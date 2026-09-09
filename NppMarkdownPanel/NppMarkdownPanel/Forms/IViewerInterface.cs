@@ -10,7 +10,7 @@ namespace NppMarkdownPanel.Forms
         void SetMarkdownFilePath(string filepath, bool isRename = false);
         void UpdateSettings(Settings settings, Action<string> openLocalFileInNppAction);
         void RenderMarkdown(string currentText, string filepath, bool preserveVerticalScrollPosition = true);
-        void ScrollToElementWithLineNo(int lineNo);
+        void ScrollToElementWithLineNo(int lineNo, bool scrollToEnd);
         bool IsValidFileExtension(string filename);
         void Cleanup();
         void ExportToPdf();
