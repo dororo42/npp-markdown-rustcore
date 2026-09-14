@@ -1,4 +1,4 @@
-﻿OK [2c-body] OK [2c-signature] using NppMarkdownPanel.Entities;
+﻿using NppMarkdownPanel.Entities;
 using NppMarkdownPanel.Generator;
 using NppMarkdownPanel.Webbrowser;
 using PanelCommon;
