@@ -730,7 +730,6 @@ namespace NppMarkdownPanel
             // Calibre/EPUB friendly export: images copied next to the HTML, src relative.
             viewerInterface.ExportToHtml(HtmlExportMode.LocalImages);
         }
-        }
 
         private bool initDialog;
 
