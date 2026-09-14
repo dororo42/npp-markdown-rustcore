@@ -35,6 +35,7 @@
             this.tbPreview = new System.Windows.Forms.ToolStrip();
             this.btnSaveHtml = new System.Windows.Forms.ToolStripSplitButton();
             this.btnSaveWithLightTheme = new System.Windows.Forms.ToolStripMenuItem();
+            this.btnSaveHtmlLocalImages = new System.Windows.Forms.ToolStripButton();
             this.btnCopyToClipboard = new System.Windows.Forms.ToolStripButton();
             this.btnExportToPdf = new System.Windows.Forms.ToolStripButton();
             this.footerStatusStrip = new System.Windows.Forms.StatusStrip();
@@ -106,6 +107,7 @@
             this.tbPreview.ImageScalingSize = new System.Drawing.Size(20, 20);
             this.tbPreview.Items.AddRange(new System.Windows.Forms.ToolStripItem[] {
             this.btnSaveHtml,
+            this.btnSaveHtmlLocalImages,
             this.btnCopyToClipboard,
             this.btnExportToPdf});
             this.tbPreview.Location = new System.Drawing.Point(0, 0);
@@ -134,8 +136,18 @@
             this.btnSaveWithLightTheme.Text = "Save As (with Light Theme)";
             this.btnSaveWithLightTheme.Click += new System.EventHandler(this.btnSaveLightTheme_Click);
             // 
+            // btnSaveHtmlLocalImages
+            // 
+            this.btnSaveHtmlLocalImages.Image = global::NppMarkdownPanel.Properties.Resources.Save_16x_32;
+            this.btnSaveHtmlLocalImages.ImageTransparentColor = System.Drawing.Color.Black;
+            this.btnSaveHtmlLocalImages.Name = "btnSaveHtmlLocalImages";
+            this.btnSaveHtmlLocalImages.Size = new System.Drawing.Size(190, 24);
+            this.btnSaveHtmlLocalImages.Text = "Save As (Local Images)...";
+            this.btnSaveHtmlLocalImages.Click += new System.EventHandler(this.btnSaveHtmlLocalImages_Click);
+            // 
             // btnCopyToClipboard
             // 
+
             this.btnCopyToClipboard.Image = global::NppMarkdownPanel.Properties.Resources.Copy_16x_32;
             this.btnCopyToClipboard.ImageTransparentColor = System.Drawing.Color.Black;
             this.btnCopyToClipboard.Name = "btnCopyToClipboard";
@@ -206,6 +218,7 @@
         public System.Windows.Forms.Panel panel1;
         private System.Windows.Forms.ToolStripSplitButton btnSaveHtml;
         private System.Windows.Forms.ToolStripMenuItem btnSaveWithLightTheme;
+        private System.Windows.Forms.ToolStripButton btnSaveHtmlLocalImages;
         private System.Windows.Forms.ToolStripButton btnCopyToClipboard;
         private System.Windows.Forms.ToolStripButton btnExportToPdf;
     }

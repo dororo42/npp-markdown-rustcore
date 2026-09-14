@@ -1,4 +1,4 @@
-﻿using NppMarkdownPanel.Entities;
+﻿OK [2c-body] OK [2c-signature] using NppMarkdownPanel.Entities;
 using NppMarkdownPanel.Generator;
 using NppMarkdownPanel.Webbrowser;
 using PanelCommon;
@@ -628,7 +628,12 @@ OUTLINE_SCRIPT_PLACEHOLDER
             ShowSaveAs(true);
         }
 
-        private void ShowSaveAs(bool overrideLightTheme, bool embedImages = false)
+        private void btnSaveHtmlLocalImages_Click(object sender, EventArgs e)
+        {
+            ShowSaveAs(false, HtmlExportMode.LocalImages);
+        }
+
+        private void ShowSaveAs(bool overrideLightTheme, HtmlExportMode mode = HtmlExportMode.Plain)
         {
             using (SaveFileDialog saveFileDialog = new SaveFileDialog())
             {
@@ -638,18 +643,18 @@ OUTLINE_SCRIPT_PLACEHOLDER
                 saveFileDialog.FileName = Path.GetFileNameWithoutExtension(currentFilePath);
                 if (saveFileDialog.ShowDialog() == DialogResult.OK)
                 {
-                    writeHtmlContentToFile(saveFileDialog.FileName, overrideLightTheme, embedImages);
+                    writeHtmlContentToFile(saveFileDialog.FileName, overrideLightTheme, mode);
                 }
             }
         }
 
-        public void ExportToHtml(bool embedImages)
+        public void ExportToHtml(HtmlExportMode mode)
         {
             if (webbrowserControl == null) return;
-            ShowSaveAs(false, embedImages);
+            ShowSaveAs(false, mode);
         }
 
-        private void writeHtmlContentToFile(string filename, bool overrideLightTheme = false, bool embedImages = false)
+        private void writeHtmlContentToFile(string filename, bool overrideLightTheme = false, HtmlExportMode mode = HtmlExportMode.Plain)
         {
             if (!string.IsNullOrEmpty(filename))
             {
@@ -658,8 +663,15 @@ OUTLINE_SCRIPT_PLACEHOLDER
                 var html = overrideLightTheme
                     ? RenderExportHtml(true)
                     : (htmlContentForExport ?? RenderExportHtml(false));
-                if (embedImages)
-                    html = EmbedLocalImages(html);
+                switch (mode)
+                {
+                    case HtmlExportMode.EmbedBase64:
+                        html = EmbedLocalImages(html);
+                        break;
+                    case HtmlExportMode.LocalImages:
+                        html = CopyImagesToLocalFolder(html, filename);
+                        break;
+                }
                 File.WriteAllText(filename, html);
             }
         }
@@ -742,6 +754,87 @@ OUTLINE_SCRIPT_PLACEHOLDER
             catch (Exception)
             {
                 return null;
+            }
+        }
+
+        /// <summary>
+        /// Local-images export (v1.2.3): copies each locally-resolvable image next to the
+        /// exported HTML (same folder) and rewrites src to the bare file name - Calibre/EPUB
+        /// friendly. Same-name same-content reuses the file; same-name different-content
+        /// appends -1/-2 (first-occurrence order). Remote/data: refs and read failures
+        /// keep the original src (consistent with the base64 mode).
+        /// </summary>
+        private string CopyImagesToLocalFolder(string html, string exportHtmlPath)
+        {
+            if (string.IsNullOrEmpty(html) || string.IsNullOrEmpty(currentFilePath))
+                return html;
+            var baseDir = Path.GetDirectoryName(currentFilePath);
+            var exportDir = Path.GetDirectoryName(Path.GetFullPath(exportHtmlPath));
+            if (string.IsNullOrEmpty(baseDir) || string.IsNullOrEmpty(exportDir))
+                return html;
+
+            // source absolute path -> final file name in the export folder
+            var assigned = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+            return ImgSrcRegex.Replace(html, match =>
+            {
+                var src = match.Groups["src"].Value;
+                var localPath = ResolveLocalImagePath(src, baseDir);
+                if (localPath == null)
+                    return match.Value;
+                try
+                {
+                    if (assigned.TryGetValue(localPath, out var mappedName))
+                    {
+                        // same source file seen again -> reuse the assigned name
+                        return match.Groups["prefix"].Value + mappedName + match.Groups["sfx"].Value;
+                    }
+
+                    var sourceBytes = File.ReadAllBytes(localPath);
+                    var fileName = Path.GetFileName(localPath);
+                    var targetPath = Path.Combine(exportDir, fileName);
+
+                    if (File.Exists(targetPath) && !FilesEqual(sourceBytes, targetPath))
+                    {
+                        var stem = Path.GetFileNameWithoutExtension(fileName);
+                        var ext = Path.GetExtension(fileName);
+                        var seq = 1;
+                        do
+                        {
+                            fileName = stem + "-" + seq + ext;
+                            targetPath = Path.Combine(exportDir, fileName);
+                            seq++;
+                        } while (File.Exists(targetPath) && !FilesEqual(sourceBytes, targetPath));
+                    }
+
+                    if (!File.Exists(targetPath))
+                        File.WriteAllBytes(targetPath, sourceBytes);
+
+                    assigned[localPath] = fileName;
+                    return match.Groups["prefix"].Value + fileName + match.Groups["sfx"].Value;
+                }
+                catch (Exception)
+                {
+                    return match.Value;
+                }
+            });
+        }
+
+        private static bool FilesEqual(byte[] sourceBytes, string targetPath)
+        {
+            try
+            {
+                using (var fs = File.OpenRead(targetPath))
+                {
+                    if (fs.Length != sourceBytes.Length) return false;
+                    var buf = new byte[sourceBytes.Length];
+                    return fs.Read(buf, 0, buf.Length) == buf.Length
+                        && buf.SequenceEqual(sourceBytes);
+                }
+            }
+            catch (Exception)
+            {
+                return false;
             }
         }
 

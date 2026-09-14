@@ -485,6 +485,7 @@ namespace NppMarkdownPanel
             PluginBase.SetCommand(nextItem + 4, "Export to &PDF", ExportToPdf);
             PluginBase.SetCommand(nextItem + 5, "Export HT&ML...", ExportHtml);
             PluginBase.SetCommand(nextItem + 6, "Export HTML with &Images (single file)...", ExportHtmlWithImages);
+            PluginBase.SetCommand(nextItem + 7, "Export HTML (&local images)...", ExportHtmlWithLocalImages);
             idMyDlg = 0;
         }
 
@@ -715,13 +716,20 @@ namespace NppMarkdownPanel
 
         private void ExportHtml()
         {
-            viewerInterface.ExportToHtml(false);
+            viewerInterface.ExportToHtml(HtmlExportMode.Plain);
         }
 
         private void ExportHtmlWithImages()
         {
             // 浏览器「另存为网页」式导出：本地图片 base64 内嵌为单文件 HTML。
-            viewerInterface.ExportToHtml(true);
+            viewerInterface.ExportToHtml(HtmlExportMode.EmbedBase64);
+        }
+
+        private void ExportHtmlWithLocalImages()
+        {
+            // Calibre/EPUB friendly export: images copied next to the HTML, src relative.
+            viewerInterface.ExportToHtml(HtmlExportMode.LocalImages);
+        }
         }
 
         private bool initDialog;

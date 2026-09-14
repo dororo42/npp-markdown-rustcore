@@ -3,6 +3,17 @@ using System;
 
 namespace NppMarkdownPanel.Forms
 {
+    /// <summary>HTML export mode (v1.2.3).</summary>
+    public enum HtmlExportMode
+    {
+        /// <summary>Plain: image references are kept as-is.</summary>
+        Plain = 0,
+        /// <summary>EmbedBase64: local images baked in as data URIs (single file).</summary>
+        EmbedBase64 = 1,
+        /// <summary>LocalImages: images copied next to the HTML, src rewritten to relative paths (Calibre/EPUB friendly).</summary>
+        LocalImages = 2,
+    }
+
     public interface IViewerInterface
     {
         IntPtr Handle { get; }
@@ -14,7 +25,7 @@ namespace NppMarkdownPanel.Forms
         bool IsValidFileExtension(string filename);
         void Cleanup();
         void ExportToPdf();
-        /// <summary>Save-as dialog exporting the current preview as HTML; embedImages bakes local images in as base64 data URIs (single file).</summary>
-        void ExportToHtml(bool embedImages);
+        /// <summary>Save-as dialog exporting the current preview as HTML in the given mode.</summary>
+        void ExportToHtml(HtmlExportMode mode);
     }
 }

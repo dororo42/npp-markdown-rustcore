@@ -246,6 +246,14 @@ const char* rustrender_version(void);
 渲染引擎按 CommonMark 规范解析：**紧跟在段落文字下一行（无空行）的 `---` 会被解析为该段的 setext 二级标题**（整段放大加粗），GitHub 亦然。若想把 `---` 当水平分隔线使用，请在其前后各留一个空行。v1.2.2 渲染核心无改动。
 
 ---
+### v1.2.3 更新
+
+**新增**
+
+- **本地图片导出模式**（Calibre/EPUB 友好）：预览工具栏新增「Save As (Local Images)...」按钮，插件菜单新增「Export HTML (local images)...」。导出时把本地图片复制到 HTML 同一文件夹，`<img src>` 重写为相对文件名；同名不同内容自动加 -1/-2 序号；远程与 `data:` 引用保留原样；解析/读盘失败静默保留原引用。与既有「Save As...」（纯 HTML）、「Export HTML with Images」（base64 内嵌单文件）三模式并存。
+
+---
+
 ## 🗺 路线图
 
 - [x] Phase 0-1：共享核心 + 54 项测试全绿（core 44 + FFI 10）
