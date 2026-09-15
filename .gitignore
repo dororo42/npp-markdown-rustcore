@@ -38,3 +38,6 @@ Thumbs.db
 .trae-html-share-packages/
 .trae/
 .uploads/
+
+# ===== Local workspace tooling =====
+.workbuddy/
