@@ -844,54 +844,27 @@ OUTLINE_SCRIPT_PLACEHOLDER
         private string TryDownloadRemoteImage(string src, string exportDir)
         {
             if (string.IsNullOrWhiteSpace(src)) return null;
-            if (!src.StartsWith(
-"
-http://
-"
-, StringComparison.OrdinalIgnoreCase) &&
-                !src.StartsWith(
-"
-https://
-"
-, StringComparison.OrdinalIgnoreCase)) return null;
+            var httpPrefix = "http://";
+            var httpsPrefix = "https://";
+            if (!src.StartsWith(httpPrefix, StringComparison.OrdinalIgnoreCase) &&
+                !src.StartsWith(httpsPrefix, StringComparison.OrdinalIgnoreCase)) return null;
             try
             {
-                var raw = src.Split(
-"
-?
-"
-[0])[0];
-                raw = raw.Split(
-"
-#
-"
-[0])[0];
-                var fileName = System.IO.Path.GetFileName(raw.TrimEnd(
-"
-/
-"
-));
-                if (fileName.Length == 0) fileName = 
-"
-image
-"
-;
+                var qm = "?";
+                var hs = "#";
+                var sl = "/";
+                var raw = src.Split(qm[0])[0];
+                raw = raw.Split(hs[0])[0];
+                var fileName = System.IO.Path.GetFileName(raw.TrimEnd(sl[0]));
+                if (fileName.Length == 0) fileName = "image";
                 var ext = System.IO.Path.GetExtension(fileName);
-                if (ext.Length > 10) ext = 
-"
-.img
-"
-;
+                if (ext.Length > 10) ext = ".img";
                 var stem = System.IO.Path.GetFileNameWithoutExtension(fileName);
                 var targetPath = System.IO.Path.Combine(exportDir, fileName);
                 var seq = 1;
                 while (File.Exists(targetPath))
                 {
-                    fileName = stem + 
-"
--
-"
- + seq + ext;
+                    fileName = stem + "-" + seq + ext;
                     targetPath = System.IO.Path.Combine(exportDir, fileName);
                     seq++;
                 }
