@@ -321,6 +321,19 @@ const char* rustrender_version(void);
 
 ---
 
+### v1.2.5 更新
+
+**修复**
+
+- **「Synchronize preview scroll to editor」开关重启后丢失**：`SaveSettings` 写入的是 `True`/`False`，而启动读取用的 `GetPrivateProfileInt` 只认整数，静默回落为 0——每次重启 N++ 开关都被重置。现统一改用 `ReadIniBool`（兼容 `1`/`0` 与 `True`/`False`）读取全部三个同步开关，写入统一为 `1`/`0`。首次升级后需重新勾选一次，之后持久生效。
+
+**改进**
+
+- 远程图片下载加固：HttpClient 带真实 User-Agent（部分图床拒绝空 UA）；单图超时 30s → 15s；新增 45s 总下载预算，超预算后剩余远程图保留外链，不再可能长时间阻塞导出。
+- 导出失败提示（复核遗留 F-1）：导出写盘/渲染异常现在弹窗告知原因，不再沿菜单命令路径抛出。
+
+---
+
 ## 🗺 路线图
 
 - [x] Phase 0-1：共享核心 + 54 项测试全绿（core 44 + FFI 10）

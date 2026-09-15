@@ -641,7 +641,15 @@ OUTLINE_SCRIPT_PLACEHOLDER
                 saveFileDialog.FileName = Path.GetFileNameWithoutExtension(currentFilePath);
                 if (saveFileDialog.ShowDialog() == DialogResult.OK)
                 {
-                    writeHtmlContentToFile(saveFileDialog.FileName, overrideLightTheme, mode);
+                    try
+                    {
+                        writeHtmlContentToFile(saveFileDialog.FileName, overrideLightTheme, mode);
+                    }
+                    catch (Exception ex)
+                    {
+                        // v1.2.5 (F-1): keep the panel alive and tell the user what failed
+                        MessageBox.Show("Export failed: " + ex.Message, "Markdown Panel", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    }
                 }
             }
         }
@@ -684,6 +692,8 @@ OUTLINE_SCRIPT_PLACEHOLDER
         private static readonly System.Net.Http.HttpClient Http = new System.Net.Http.HttpClient()
         {
             Timeout = TimeSpan.FromSeconds(30),
+            // honest UA: several image CDNs reject UA-less requests
+            DefaultRequestHeaders = { UserAgent = { new System.Net.Http.Headers.ProductInfoHeaderValue("npp-markdown-rustcore", "1.2.5") } },
         };
 
         // comrak 输出的 <img> 恒为双引号属性; 仅匹配本地可内嵌的 src。
@@ -780,6 +790,11 @@ OUTLINE_SCRIPT_PLACEHOLDER
             // source absolute path -> final file name in the export folder
             var assigned = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
+            // v1.2.5: bound the worst-case UI freeze - stop fetching remote
+            // images after 45s total; remaining remote refs keep their links.
+            var remoteSw = System.Diagnostics.Stopwatch.StartNew();
+            var remoteBudget = TimeSpan.FromSeconds(45);
+
             return ImgSrcRegex.Replace(html, match =>
             {
                 var src = match.Groups["src"].Value;
@@ -791,6 +806,8 @@ OUTLINE_SCRIPT_PLACEHOLDER
                     // original reference (silent degradation). TryDownloadRemoteImage
                     // writes a temp file; the normal rename rules below move it into
                     // the export folder and rewrite src.
+                    if (remoteSw.Elapsed > remoteBudget)
+                        return match.Value;
                     var downloaded = TryDownloadRemoteImage(src, exportDir);
                     if (downloaded == null)
                         return match.Value;
@@ -868,7 +885,7 @@ OUTLINE_SCRIPT_PLACEHOLDER
                     targetPath = System.IO.Path.Combine(exportDir, fileName);
                     seq++;
                 }
-                using (var cts = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(30)))
+                using (var cts = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(15)))
                 using (var resp = Http.GetAsync(src, cts.Token).GetAwaiter().GetResult())
                 {
                     if (!resp.IsSuccessStatusCode) return null;

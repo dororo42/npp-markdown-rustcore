@@ -454,9 +454,12 @@ namespace NppMarkdownPanel
 
         public void InitCommandMenu()
         {
-            syncViewWithCaretPosition = (Win32.GetPrivateProfileInt("Options", "SyncViewWithCaretPosition", 0, iniFilePath) != 0);
-            syncViewWithFirstVisibleLine = (Win32.GetPrivateProfileInt("Options", "SyncWithFirstVisibleLine", 0, iniFilePath) != 0);
-            syncPreviewToEditor = (Win32.GetPrivateProfileInt("Options", "SyncPreviewToEditor", 0, iniFilePath) != 0);
+            // v1.2.5: ReadIniBool accepts both "1"/"0" and "True"/"False".
+            // GetPrivateProfileInt silently falls back to 0 on "True", which
+            // reset the toggle on every restart (SaveSettings writes bool.ToString()).
+            syncViewWithCaretPosition = PluginUtils.ReadIniBool("Options", "SyncViewWithCaretPosition", iniFilePath);
+            syncViewWithFirstVisibleLine = PluginUtils.ReadIniBool("Options", "SyncWithFirstVisibleLine", iniFilePath);
+            syncPreviewToEditor = PluginUtils.ReadIniBool("Options", "SyncPreviewToEditor", iniFilePath);
             settings.SyncPreviewToEditor = syncPreviewToEditor;
             showOutline = PluginUtils.ReadIniBool("Options", "ShowOutline", iniFilePath, false);
             PluginBase.SetCommand(0, "Toggle &Markdown Panel", TogglePanelVisible);
@@ -699,7 +702,7 @@ namespace NppMarkdownPanel
             Win32.WriteIniValue("Options", "HtmlSourcePreview", settings.HtmlSourcePreview.ToString(), iniFilePath);
             Win32.WriteIniValue("Options", "RenderingEngine", settings.RenderingEngine, iniFilePath);
             Win32.WriteIniValue("Options", "ShowOutline", settings.ShowOutline.ToString(), iniFilePath);
-            Win32.WriteIniValue("Options", "SyncPreviewToEditor", settings.SyncPreviewToEditor.ToString(), iniFilePath);
+            Win32.WriteIniValue("Options", "SyncPreviewToEditor", settings.SyncPreviewToEditor ? "1" : "0", iniFilePath);
             Win32.WriteIniValue("Options", "PreviewTheme", ThemeCatalog.Find(settings.PreviewTheme).Key, iniFilePath);
             Win32.WriteIniValue("Options", "PreviewDarkMode", settings.PreviewDarkMode.ToString(), iniFilePath);
         }
