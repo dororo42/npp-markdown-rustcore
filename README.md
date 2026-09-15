@@ -22,7 +22,7 @@
 - **Mermaid 图表**：` ```mermaid ` 围栏在预览中直接渲染为图表（CDN mermaid@11，首载与增量更新均自动转换；离线降级为高亮代码块）
 - **7 套预览主题**：Default（GitHub）/ Obsidian / Nord / Gruvbox / Everforest / Dracula / Catppuccin × 明暗双板，插件菜单即时切换 + ini 持久化
 - **本地图片/链接**：comrak `URLRewriter` 阶段解析为绝对 `file:///` URL（无正则后处理）
-- **HTML 导出**：菜单「Export HTML…」直接导出；「Export HTML with Images…」为浏览器「另存为网页」式单文件——本地图片 base64 内嵌，离线可看；Settings 可配置每次渲染自动落盘
+- **HTML / PDF 导出（四种模式）**：纯 HTML（图片引用原样保留）/ 单文件（本地图片 base64 内嵌，离线可看）/ 本地图片文件夹（图片复制 + 远程图片下载到同目录，Calibre · EPUB 友好）/ PDF——插件菜单与预览工具栏入口完全一致，详见「📤 导出网页（四种模式对比）」；Settings 可配置每次渲染自动落盘（纯 HTML 模式）
 - **安全净化**：ammonia 白名单（默认禁 `data:`/`javascript:`，保留 syntect 受控内联样式）
 - **滚动同步锚点**：全块级 `data-line` + 标题 `data-src-line`（与上游 Webview2 控件契约兼容）；光标位于多行块内部时回退最近前驱块，不再静默失联
 - **双向同步滚动**：开启「Synchronize preview scroll to editor」后，在预览面板滚动时编辑器跟随定位到对应源码块（块级粒度，反向只动 first-visible-line 不动光标；自带回声抑制，可与前向同步同时开启；ini `Options → SyncPreviewToEditor`）；mermaid 图块保留 `data-line` 锚点
@@ -52,6 +52,62 @@
 ```
 
 渲染管线：`comrak 解析 → AST heading 提取 → syntect 高亮(缓存) → data-line 锚点注入 → ammonia 净化`
+
+## 📤 导出网页（四种模式对比）
+
+插件菜单（`插件 → MarkdownPanel` 底部四项）与预览窗口工具栏提供**完全一致**的导出能力：
+
+| # | 模式 | 插件菜单 | 预览工具栏 | 一句话说明 |
+|:-:|------|----------|------------|------------|
+| ① | 纯 HTML | `Export HT&ML...` | `Save As...` | 图片引用**原样保留** |
+| ② | 单文件内嵌 | `Export HTML with &Images (single file)...` | `Save As (Single File)...` | 本地图片 base64 **内嵌**，单文件离线可看 |
+| ③ | 本地图片文件夹 | `Export HTML (images saved locally)...` | `Save As (Images Saved)...` | 图片**复制/下载**到 HTML 同目录，`src` 改写为文件名 |
+| ④ | PDF | `Export to &PDF` | `Export to PDF` | 导出当前预览为 PDF |
+
+> 工具栏另有 `Copy To Clipboard`：按 ① 纯 HTML 的内容复制（同时写入 HTML 与纯文本两种剪贴板格式）。
+
+### 差异对照表
+
+| 差异点 | ① 纯 HTML | ② 单文件内嵌 | ③ 本地图片文件夹 |
+|--------|-----------|--------------|------------------|
+| **本地图片** | 保持原引用（Markdown 里怎么写就怎么写：相对路径仍是相对路径，`C:\…` 仍是绝对路径） | 可解析的本地图 → `data:` base64 **内嵌进 HTML** | **复制**到 HTML 同目录，`src` 改写为文件名 |
+| **远程图片 `http(s)`** | 保持外链 | 保持外链（**不下载**） | **自动下载**到同目录并改写为文件名 |
+| **已是 `data:` 的引用** | 保持 | 保持 | 保持 |
+| **单文件能否独立发送** | ❌ 否（依赖原路径） | ✅ 是 | ❌ 否（需连同同目录图片） |
+| **移动 HTML 后图片是否还在** | 本地图失效 | 本地图仍在 | 同目录一起移动即可 |
+| **体积** | 最小 | 最大（base64 约为原图 1.33 倍） | 中（原图另存，不膨胀） |
+| **同名冲突** | — | — | 同名不同内容自动加 `-1`/`-2`；同一源图复用同一文件名 |
+| **上限与失败降级** | — | 单图 >16MB 或读盘/解析失败 → 保留原引用（不中断导出） | 远程超时 30s / 非 2xx / >16MB → 保留原外链；本地失败同 ② |
+| **典型用途** | 与源文件同目录分发、二次加工 | 单文件分享、邮件附件、归档 | Calibre → EPUB、断网浏览、目录式交付 |
+
+### 三种 HTML 模式的共性
+
+- **样式全量内联**：`<style id="md-preview-style">` 直接写进 HTML，无外部样式表引入，单个文件即可正确排版；代码高亮为 syntect 内联样式。
+- **`<title>` 取 Markdown 文件名**；正文为 ammonia 净化后的渲染结果（`data:`/`javascript:` 等危险 URL 仍按白名单约束）。
+- **主题板跟随导出时刻的预览设置**：明/暗板与代码高亮配色联动（与预览所见一致）。
+- **mermaid 依赖 CDN**：模板内置 `mermaid@11`（jsdelivr）脚本，离线打开时自动退化为高亮代码块——与预览行为一致。
+- **开启「Show outline」时**，导出的 HTML 同样内置大纲侧栏，行为与预览一致。
+
+### 自动落盘（Settings → HTML Auto-Export）
+
+在 Settings 的 **HTML Auto-Export** 分组填入输出路径（ini `HtmlFileName`）后，**每次渲染都会把当前预览的 ① 纯 HTML 重写到该文件**——等价于连续自动导出「纯 HTML」模式。②③ 含图片处理、④ PDF 仍须手动触发。
+
+### PDF 导出的引擎差异
+
+| 引擎 | 行为 |
+|------|------|
+| **WebView2**（默认） | `CoreWebView2.PrintToPdfAsync` 直接生成 PDF 文件，无对话框 |
+| **IE11**（回退） | 调用系统打印对话框（`ExecWB(PRINT, PROMPTUSER)`），需自行选择「Microsoft Print to PDF」等虚拟打印机 |
+
+导出内容为当前预览 DOM 的完整排版，样式表**未定义 `@media print` 规则**：若预览开启了「Show outline」，左侧大纲栏与左上角浮动切换按钮会一并进入 PDF / 打印输出。需要纯净文档时，建议先取消勾选 `插件 → MarkdownPanel → Show outline` 再导出。
+
+### 版本注记
+
+- **v1.0**：新增 `Export HTML...`（纯 HTML）与 `Export HTML with Images (single file)...`（base64 单文件）
+- **v1.2.3**：新增「本地图片文件夹」模式（Calibre/EPUB 友好）
+- **v1.2.4**：四个入口在菜单与工具栏全对齐（移除仅工具栏可达的亮色变体）；③ 升级为完整「另存为网页」语义（远程图片自动下载）
+
+---
 
 ## 🆕 v1.1 更新
 
@@ -261,6 +317,7 @@ const char* rustrender_version(void);
 - **导出入口全对齐**：预览工具栏与插件菜单现在提供完全一致的四个导出能力——纯 HTML（链接原样保留）、单文件（base64 内嵌）、本地图片保存、导出 PDF；删除了仅工具栏可达的「Save As (with Light Theme)」（亮色变体与暗色板主题功能重叠）。
 - **「本地图片保存」模式升级为完整「另存为网页」**：除本地图片复制外，现在同时下载远程 http(s) 图片到 HTML 同一文件夹并重写为相对路径——断网可看、Calibre 转 EPUB 不丢图。下载失败（超时/防盗链 403/超 16MB）静默保留原外链，不中断导出。
 - 菜单与按钮文案更新：「Export HTML (images saved locally)...」/「Save As (Images Saved)...」/「Save As (Single File)...」。
+- 四种模式的完整差异对照见「📤 导出网页（四种模式对比）」章节。
 
 ---
 
