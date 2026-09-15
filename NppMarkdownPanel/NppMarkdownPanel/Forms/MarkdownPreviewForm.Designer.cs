@@ -34,7 +34,7 @@
             this.panel1 = new System.Windows.Forms.Panel();
             this.tbPreview = new System.Windows.Forms.ToolStrip();
             this.btnSaveHtml = new System.Windows.Forms.ToolStripSplitButton();
-            this.btnSaveWithLightTheme = new System.Windows.Forms.ToolStripMenuItem();
+            this.btnSaveBase64 = new System.Windows.Forms.ToolStripButton();
             this.btnSaveHtmlLocalImages = new System.Windows.Forms.ToolStripButton();
             this.btnCopyToClipboard = new System.Windows.Forms.ToolStripButton();
             this.btnExportToPdf = new System.Windows.Forms.ToolStripButton();
@@ -108,6 +108,7 @@
             this.tbPreview.Items.AddRange(new System.Windows.Forms.ToolStripItem[] {
             this.btnSaveHtml,
             this.btnSaveHtmlLocalImages,
+            this.btnSaveBase64,
             this.btnCopyToClipboard,
             this.btnExportToPdf});
             this.tbPreview.Location = new System.Drawing.Point(0, 0);
@@ -118,8 +119,6 @@
             // 
             // btnSaveHtml
             // 
-            this.btnSaveHtml.DropDownItems.AddRange(new System.Windows.Forms.ToolStripItem[] {
-            this.btnSaveWithLightTheme});
             this.btnSaveHtml.Image = global::NppMarkdownPanel.Properties.Resources.Save_16x_32;
             this.btnSaveHtml.ImageTransparentColor = System.Drawing.Color.Black;
             this.btnSaveHtml.Name = "btnSaveHtml";
@@ -127,14 +126,14 @@
             this.btnSaveHtml.Text = "Save As...";
             this.btnSaveHtml.ButtonClick += new System.EventHandler(this.btnSaveHtml_Click);
             // 
-            // btnSaveWithLightTheme
+            // btnSaveBase64
             // 
-            this.btnSaveWithLightTheme.Image = global::NppMarkdownPanel.Properties.Resources.Save_16x_32;
-            this.btnSaveWithLightTheme.ImageTransparentColor = System.Drawing.Color.Black;
-            this.btnSaveWithLightTheme.Name = "btnSaveWithLightTheme";
-            this.btnSaveWithLightTheme.Size = new System.Drawing.Size(271, 26);
-            this.btnSaveWithLightTheme.Text = "Save As (with Light Theme)";
-            this.btnSaveWithLightTheme.Click += new System.EventHandler(this.btnSaveLightTheme_Click);
+            this.btnSaveBase64.Image = global::NppMarkdownPanel.Properties.Resources.Save_16x_32;
+            this.btnSaveBase64.ImageTransparentColor = System.Drawing.Color.Black;
+            this.btnSaveBase64.Name = "btnSaveBase64";
+            this.btnSaveBase64.Size = new System.Drawing.Size(190, 24);
+            this.btnSaveBase64.Text = "Save As (Single File)...";
+            this.btnSaveBase64.Click += new System.EventHandler(this.btnSaveBase64_Click);
             // 
             // btnSaveHtmlLocalImages
             // 
@@ -142,7 +141,7 @@
             this.btnSaveHtmlLocalImages.ImageTransparentColor = System.Drawing.Color.Black;
             this.btnSaveHtmlLocalImages.Name = "btnSaveHtmlLocalImages";
             this.btnSaveHtmlLocalImages.Size = new System.Drawing.Size(190, 24);
-            this.btnSaveHtmlLocalImages.Text = "Save As (Local Images)...";
+            this.btnSaveHtmlLocalImages.Text = "Save As (Images Saved)...";
             this.btnSaveHtmlLocalImages.Click += new System.EventHandler(this.btnSaveHtmlLocalImages_Click);
             // 
             // btnCopyToClipboard
@@ -217,7 +216,7 @@
         private System.Windows.Forms.ToolStripStatusLabel toolStripStatusLabel1;
         public System.Windows.Forms.Panel panel1;
         private System.Windows.Forms.ToolStripSplitButton btnSaveHtml;
-        private System.Windows.Forms.ToolStripMenuItem btnSaveWithLightTheme;
+        private System.Windows.Forms.ToolStripButton btnSaveBase64;
         private System.Windows.Forms.ToolStripButton btnSaveHtmlLocalImages;
         private System.Windows.Forms.ToolStripButton btnCopyToClipboard;
         private System.Windows.Forms.ToolStripButton btnExportToPdf;

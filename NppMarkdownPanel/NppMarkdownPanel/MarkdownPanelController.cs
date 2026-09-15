@@ -485,7 +485,7 @@ namespace NppMarkdownPanel
             PluginBase.SetCommand(nextItem + 4, "Export to &PDF", ExportToPdf);
             PluginBase.SetCommand(nextItem + 5, "Export HT&ML...", ExportHtml);
             PluginBase.SetCommand(nextItem + 6, "Export HTML with &Images (single file)...", ExportHtmlWithImages);
-            PluginBase.SetCommand(nextItem + 7, "Export HTML (&local images)...", ExportHtmlWithLocalImages);
+            PluginBase.SetCommand(nextItem + 7, "Export HTML (images saved locally)...", ExportHtmlWithLocalImages);
             idMyDlg = 0;
         }
 

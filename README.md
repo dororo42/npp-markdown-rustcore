@@ -254,6 +254,16 @@ const char* rustrender_version(void);
 
 ---
 
+### v1.2.4 更新
+
+**变更**
+
+- **导出入口全对齐**：预览工具栏与插件菜单现在提供完全一致的四个导出能力——纯 HTML（链接原样保留）、单文件（base64 内嵌）、本地图片保存、导出 PDF；删除了仅工具栏可达的「Save As (with Light Theme)」（亮色变体与暗色板主题功能重叠）。
+- **「本地图片保存」模式升级为完整「另存为网页」**：除本地图片复制外，现在同时下载远程 http(s) 图片到 HTML 同一文件夹并重写为相对路径——断网可看、Calibre 转 EPUB 不丢图。下载失败（超时/防盗链 403/超 16MB）静默保留原外链，不中断导出。
+- 菜单与按钮文案更新：「Export HTML (images saved locally)...」/「Save As (Images Saved)...」/「Save As (Single File)...」。
+
+---
+
 ## 🗺 路线图
 
 - [x] Phase 0-1：共享核心 + 54 项测试全绿（core 44 + FFI 10）

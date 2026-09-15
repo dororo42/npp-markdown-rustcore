@@ -195,7 +195,6 @@ OUTLINE_SCRIPT_PLACEHOLDER
                     tsItem.ForeColor = Color.White;
                 }
 
-                //btnSaveWithLightTheme.ForeColor = Color.White;
 
                 // Footer
                 toolStripStatusLabel1.ForeColor = Color.White;
@@ -210,7 +209,6 @@ OUTLINE_SCRIPT_PLACEHOLDER
                     tsItem.ForeColor = SystemColors.ControlText;
                 }
 
-                //btnSaveWithLightTheme.ForeColor = SystemColors.ControlText;
 
                 // Footer
                 footerStatusStrip.BackColor = SystemColors.Control;
@@ -623,9 +621,9 @@ OUTLINE_SCRIPT_PLACEHOLDER
         }
 
 
-        private void btnSaveLightTheme_Click(object sender, EventArgs e)
+        private void btnSaveBase64_Click(object sender, EventArgs e)
         {
-            ShowSaveAs(true);
+            ShowSaveAs(false, HtmlExportMode.EmbedBase64);
         }
 
         private void btnSaveHtmlLocalImages_Click(object sender, EventArgs e)
@@ -681,6 +679,12 @@ OUTLINE_SCRIPT_PLACEHOLDER
 
         // 单张图片内嵌上限: 防异常大图把导出 HTML 撑爆。
         private const long MaxEmbedImageBytes = 16 * 1024 * 1024;
+
+        // v1.2.4: shared HttpClient for remote-image download (LocalImages mode).
+        private static readonly System.Net.Http.HttpClient Http = new System.Net.Http.HttpClient()
+        {
+            Timeout = TimeSpan.FromSeconds(30),
+        };
 
         // comrak 输出的 <img> 恒为双引号属性; 仅匹配本地可内嵌的 src。
         private static readonly Regex ImgSrcRegex = new Regex(
@@ -781,7 +785,17 @@ OUTLINE_SCRIPT_PLACEHOLDER
                 var src = match.Groups["src"].Value;
                 var localPath = ResolveLocalImagePath(src, baseDir);
                 if (localPath == null)
-                    return match.Value;
+                {
+                    // v1.2.4: remote http(s) image - download it next to the HTML
+                    // (browser save-as-web-page semantics). Failure keeps the
+                    // original reference (silent degradation). TryDownloadRemoteImage
+                    // writes a temp file; the normal rename rules below move it into
+                    // the export folder and rewrite src.
+                    var downloaded = TryDownloadRemoteImage(src, exportDir);
+                    if (downloaded == null)
+                        return match.Value;
+                    localPath = downloaded;
+                }
                 try
                 {
                     if (assigned.TryGetValue(localPath, out var mappedName))
@@ -818,6 +832,83 @@ OUTLINE_SCRIPT_PLACEHOLDER
                     return match.Value;
                 }
             });
+        }
+
+        /// <summary>
+        /// Download a remote http(s) image directly into the export folder.
+        /// Returns the target path on success, null on timeout/HTTP error/oversize
+        /// (16MB cap) - the caller then keeps the original reference. The file name
+        /// is derived from the URL path and de-conflicted by the normal dash-sequence
+        /// rules of the caller.
+        /// </summary>
+        private string TryDownloadRemoteImage(string src, string exportDir)
+        {
+            if (string.IsNullOrWhiteSpace(src)) return null;
+            if (!src.StartsWith(
+"
+http://
+"
+, StringComparison.OrdinalIgnoreCase) &&
+                !src.StartsWith(
+"
+https://
+"
+, StringComparison.OrdinalIgnoreCase)) return null;
+            try
+            {
+                var raw = src.Split(
+"
+?
+"
+[0])[0];
+                raw = raw.Split(
+"
+#
+"
+[0])[0];
+                var fileName = System.IO.Path.GetFileName(raw.TrimEnd(
+"
+/
+"
+));
+                if (fileName.Length == 0) fileName = 
+"
+image
+"
+;
+                var ext = System.IO.Path.GetExtension(fileName);
+                if (ext.Length > 10) ext = 
+"
+.img
+"
+;
+                var stem = System.IO.Path.GetFileNameWithoutExtension(fileName);
+                var targetPath = System.IO.Path.Combine(exportDir, fileName);
+                var seq = 1;
+                while (File.Exists(targetPath))
+                {
+                    fileName = stem + 
+"
+-
+"
+ + seq + ext;
+                    targetPath = System.IO.Path.Combine(exportDir, fileName);
+                    seq++;
+                }
+                using (var cts = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(30)))
+                using (var resp = Http.GetAsync(src, cts.Token).GetAwaiter().GetResult())
+                {
+                    if (!resp.IsSuccessStatusCode) return null;
+                    var bytes = resp.Content.ReadAsByteArrayAsync().GetAwaiter().GetResult();
+                    if (bytes.Length == 0 || bytes.Length > MaxEmbedImageBytes) return null;
+                    File.WriteAllBytes(targetPath, bytes);
+                    return targetPath;
+                }
+            }
+            catch (Exception)
+            {
+                return null;
+            }
         }
 
         private static bool FilesEqual(byte[] sourceBytes, string targetPath)
