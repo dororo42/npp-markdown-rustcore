@@ -33,7 +33,7 @@
             this.pictureBoxScreenshot = new System.Windows.Forms.PictureBox();
             this.panel1 = new System.Windows.Forms.Panel();
             this.tbPreview = new System.Windows.Forms.ToolStrip();
-            this.btnSaveHtml = new System.Windows.Forms.ToolStripSplitButton();
+            this.btnSaveHtml = new System.Windows.Forms.ToolStripButton();
             this.btnSaveBase64 = new System.Windows.Forms.ToolStripButton();
             this.btnSaveHtmlLocalImages = new System.Windows.Forms.ToolStripButton();
             this.btnCopyToClipboard = new System.Windows.Forms.ToolStripButton();
@@ -127,7 +127,7 @@
             this.btnSaveHtml.Name = "btnSaveHtml";
             this.btnSaveHtml.Size = new System.Drawing.Size(108, 24);
             this.btnSaveHtml.Text = "Save As...";
-            this.btnSaveHtml.ButtonClick += new System.EventHandler(this.btnSaveHtml_Click);
+            this.btnSaveHtml.Click += new System.EventHandler(this.btnSaveHtml_Click);
             // 
             // btnSaveBase64
             // 
@@ -224,7 +224,7 @@
         private System.Windows.Forms.StatusStrip footerStatusStrip;
         private System.Windows.Forms.ToolStripStatusLabel toolStripStatusLabel1;
         public System.Windows.Forms.Panel panel1;
-        private System.Windows.Forms.ToolStripSplitButton btnSaveHtml;
+        private System.Windows.Forms.ToolStripButton btnSaveHtml;
         private System.Windows.Forms.ToolStripButton btnSaveBase64;
         private System.Windows.Forms.ToolStripButton btnSaveHtmlLocalImages;
         private System.Windows.Forms.ToolStripButton btnCopyToClipboard;
