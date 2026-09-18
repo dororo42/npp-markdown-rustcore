@@ -103,8 +103,10 @@
             // 
             // tbPreview
             // 
+            this.tbPreview.AutoSize = true;
             this.tbPreview.Dock = System.Windows.Forms.DockStyle.None;
-            this.tbPreview.ImageScalingSize = new System.Drawing.Size(20, 20);
+            this.tbPreview.GripStyle = System.Windows.Forms.ToolStripGripStyle.Hidden;
+            this.tbPreview.ImageScalingSize = new System.Drawing.Size(16, 16);
             this.tbPreview.Items.AddRange(new System.Windows.Forms.ToolStripItem[] {
             this.btnSaveHtml,
             this.btnSaveHtmlLocalImages,
@@ -119,6 +121,7 @@
             // 
             // btnSaveHtml
             // 
+            this.btnSaveHtml.DisplayStyle = System.Windows.Forms.ToolStripItemDisplayStyle.ImageAndText;
             this.btnSaveHtml.Image = global::NppMarkdownPanel.Properties.Resources.Save_16x_32;
             this.btnSaveHtml.ImageTransparentColor = System.Drawing.Color.Black;
             this.btnSaveHtml.Name = "btnSaveHtml";
@@ -128,6 +131,7 @@
             // 
             // btnSaveBase64
             // 
+            this.btnSaveBase64.DisplayStyle = System.Windows.Forms.ToolStripItemDisplayStyle.ImageAndText;
             this.btnSaveBase64.Image = global::NppMarkdownPanel.Properties.Resources.Save_16x_32;
             this.btnSaveBase64.ImageTransparentColor = System.Drawing.Color.Black;
             this.btnSaveBase64.Name = "btnSaveBase64";
@@ -137,6 +141,7 @@
             // 
             // btnSaveHtmlLocalImages
             // 
+            this.btnSaveHtmlLocalImages.DisplayStyle = System.Windows.Forms.ToolStripItemDisplayStyle.ImageAndText;
             this.btnSaveHtmlLocalImages.Image = global::NppMarkdownPanel.Properties.Resources.Save_16x_32;
             this.btnSaveHtmlLocalImages.ImageTransparentColor = System.Drawing.Color.Black;
             this.btnSaveHtmlLocalImages.Name = "btnSaveHtmlLocalImages";
@@ -147,6 +152,7 @@
             // btnCopyToClipboard
             // 
 
+            this.btnCopyToClipboard.DisplayStyle = System.Windows.Forms.ToolStripItemDisplayStyle.ImageAndText;
             this.btnCopyToClipboard.Image = global::NppMarkdownPanel.Properties.Resources.Copy_16x_32;
             this.btnCopyToClipboard.ImageTransparentColor = System.Drawing.Color.Black;
             this.btnCopyToClipboard.Name = "btnCopyToClipboard";
@@ -156,6 +162,7 @@
             // 
             // btnExportToPdf
             // 
+            this.btnExportToPdf.DisplayStyle = System.Windows.Forms.ToolStripItemDisplayStyle.ImageAndText;
             this.btnExportToPdf.Image = global::NppMarkdownPanel.Properties.Resources.DownloadDocument_16x;
             this.btnExportToPdf.ImageTransparentColor = System.Drawing.Color.Black;
             this.btnExportToPdf.Name = "btnExportToPdf";
@@ -186,7 +193,9 @@
             this.ClientSize = new System.Drawing.Size(813, 602);
             this.Controls.Add(this.panelPreview);
             this.Controls.Add(this.footerStatusStrip);
-            this.Font = new System.Drawing.Font("Segoe UI", 7.8F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
+            // Form font is assigned in the ctor (SystemFonts.MessageBoxFont,
+            // before InitializeComponent) so the toolbar/statusbar follow the
+            // system UI font and never clip at other DPI / font sizes.
             this.Margin = new System.Windows.Forms.Padding(3, 4, 3, 4);
             this.Name = "MarkdownPreviewForm";
             this.Text = "MarkdownPreviewForm";

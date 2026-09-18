@@ -23,9 +23,6 @@ namespace NppMarkdownPanel.Webbrowser
         public Action AfterInitCompletedAction { get; set; }
         public Action<int> CheckboxToggleAction { get; set; }
         public Action<int> RadioToggleAction { get; set; }
-        // Bidirectional scroll sync is a WebView2 capability; the IE11 route
-        // keeps the property for interface parity and never reports.
-        public Action<int, bool> PreviewScrollAction { get; set; }
 
         private Action<string> openLocalFileInNppAction;
 
@@ -84,19 +81,13 @@ namespace NppMarkdownPanel.Webbrowser
             }
         }
 
-        public void ScrollToElementWithLineNo(int lineNo, bool scrollToEnd)
+        public void ScrollToElementWithLineNo(int lineNo)
         {
             Application.DoEvents();
             if (webBrowserPreview.Document != null)
             {
                 try
                 {
-                    if (scrollToEnd)
-                    {
-                        // Bottom lock: jump to the end of the page.
-                        webBrowserPreview.Document.Window.ScrollTo(0, webBrowserPreview.Document.Body.ScrollRectangle.Height);
-                        return;
-                    }
                     var script = "var el = document.querySelector('[data-line=\"{0}\"]'); if (el) { el.getBoundingClientRect().top + window.pageYOffset - 20 } else {{ 0 }}";
                     var offset = webBrowserPreview.Document.InvokeScript("eval", new object[] { string.Format(script, lineNo) });
                     if (offset is int || offset is double)
@@ -174,16 +165,30 @@ namespace NppMarkdownPanel.Webbrowser
 
         private void webBrowserPreview_Navigating(object sender, WebBrowserNavigatingEventArgs e)
         {
-            if (!e.Url.ToString().StartsWith("about:blank"))
+            var url = e.Url.ToString();
+            // External link: never navigate the preview in-panel (the user
+            // would be stuck with a hijacked view) — cancel and hand it to
+            // the system browser, same policy as the WebView2 control.
+            if (url.StartsWith("http://", StringComparison.OrdinalIgnoreCase)
+                || url.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
             {
-
+                e.Cancel = true;
+                try
+                {
+                    using (Process.Start(
+                        new ProcessStartInfo(url) { UseShellExecute = true })) { }
+                }
+                catch (Exception)
+                {
+                }
+                return;
             }
-            else
+            if (url.StartsWith("about:blank"))
             {
                 // Jump to correct anchor on the page
-                if (e.Url.ToString().Contains("#"))
+                if (url.Contains("#"))
                 {
-                    var urlParts = e.Url.ToString().Split('#');
+                    var urlParts = url.Split('#');
                     e.Cancel = true;
                     var element = webBrowserPreview.Document.GetElementById(urlParts[1]);
                     if (element != null)

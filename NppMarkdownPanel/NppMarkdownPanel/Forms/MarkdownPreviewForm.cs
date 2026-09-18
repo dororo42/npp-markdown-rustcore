@@ -235,6 +235,11 @@ OUTLINE_SCRIPT_PLACEHOLDER
 
         private MarkdownPreviewForm(Settings settings, ActionRef<Message> wndProcCallback)
         {
+            // 系统字体先于 InitializeComponent: 工具栏/状态栏控件创建时即继承,
+            // 替代 Designer 硬编码的 7.8pt 小字 —— 按钮文本按系统字体完整排版,
+            // 不再因字体/DPI 差异被裁切 (与 SettingsForm 同一处方式的修复)。
+            Font = SystemFonts.MessageBoxFont;
+
             InitializeComponent();
 
             this.wndProcCallback = wndProcCallback;
@@ -657,6 +662,9 @@ OUTLINE_SCRIPT_PLACEHOLDER
         public void ExportToHtml(HtmlExportMode mode)
         {
             if (webbrowserControl == null) return;
+            // 预览尚未完成首次渲染时没有可导出的内容（currentMarkdownText 为空
+            // 会使导出渲染链抛异常），直接忽略本次导出。
+            if (currentMarkdownText == null) return;
             ShowSaveAs(false, mode);
         }
 
