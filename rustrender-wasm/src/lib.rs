@@ -9,8 +9,9 @@
 //! Build:
 //! ```sh
 //! cargo build -p rustrender-wasm --target wasm32-unknown-unknown --release
+//! # input = the raw cdylib artifact; `..._bg.wasm` is wasm-bindgen's OUTPUT name
 //! wasm-bindgen --target web --out-dir web/bindings \
-//!   target/wasm32-unknown-unknown/release/rustrender_wasm_bg.wasm
+//!   target/wasm32-unknown-unknown/release/rustrender_wasm.wasm
 //! ```
 
 use serde::{Deserialize, Serialize};
@@ -28,10 +29,32 @@ pub struct JsRenderOptions {
     pub source_line_anchors: bool,
     #[serde(default = "default_true")]
     pub highlight: bool,
+    /// Syntect theme class (FFI bits 7-9 parity). Accepted for contract
+    /// parity; effective only if the build carries syntect (it does not).
+    pub highlight_theme: u8,
 }
 
 fn default_true() -> bool {
     true
+}
+
+/// The single mapping point from the JS-facing option struct to the core.
+/// Both entry points (`render_markdown` / `render_markdown_json`) go through
+/// this `From` impl, so a new core option is mirrored in exactly one place.
+impl From<&JsRenderOptions> for rustrender_core::RenderOptions {
+    fn from(o: &JsRenderOptions) -> Self {
+        rustrender_core::RenderOptions {
+            dark_mode: o.dark_mode,
+            enable_callout: o.enable_callout,
+            enable_wikilink: o.enable_wikilink,
+            enable_mermaid: o.enable_mermaid,
+            enable_katex: o.enable_katex,
+            source_line_anchors: o.source_line_anchors,
+            // WASM builds carry no syntect; highlighting stays front-end.
+            highlight: false,
+            highlight_theme: o.highlight_theme,
+        }
+    }
 }
 
 /// Result payload returned to JS.
@@ -62,17 +85,7 @@ pub fn render_markdown(markdown: &str, options: JsValue) -> Result<JsValue, JsVa
         serde_wasm_bindgen::from_value(options).map_err(|e| JsValue::from_str(&e.to_string()))?
     };
 
-    let core_opts = rustrender_core::RenderOptions {
-        dark_mode: opts.dark_mode,
-        enable_callout: opts.enable_callout,
-        enable_wikilink: opts.enable_wikilink,
-        enable_mermaid: opts.enable_mermaid,
-        enable_katex: opts.enable_katex,
-        source_line_anchors: opts.source_line_anchors,
-        // WASM builds carry no syntect; highlight flags intentionally ignored.
-        highlight: false,
-        highlight_theme: 0,
-    };
+    let core_opts = rustrender_core::RenderOptions::from(&opts);
 
     let t0 = js_sys::Date::now();
     // cwd is not resolvable inside WASM: path fixing stays a host/core concern.
@@ -107,16 +120,7 @@ pub fn render_markdown_json(markdown: &str, options_json: &str) -> Result<String
             .map_err(|e| JsValue::from_str(&format!("bad options: {e}")))?
     };
 
-    let core_opts = rustrender_core::RenderOptions {
-        dark_mode: opts.dark_mode,
-        enable_callout: opts.enable_callout,
-        enable_wikilink: opts.enable_wikilink,
-        enable_mermaid: opts.enable_mermaid,
-        enable_katex: opts.enable_katex,
-        source_line_anchors: opts.source_line_anchors,
-        highlight: false,
-        highlight_theme: 0,
-    };
+    let core_opts = rustrender_core::RenderOptions::from(&opts);
 
     let out = rustrender_core::render(markdown, None, &core_opts)
         .map_err(|e| JsValue::from_str(&e.to_string()))?;

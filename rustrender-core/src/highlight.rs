@@ -259,6 +259,10 @@ impl SyntaxHighlighterAdapter for CachedAdapter {
 
         let html = self.highlight_inline(lang, code)?;
 
+        // Write before inserting so the entry can be *moved* into the cache
+        // instead of cloned — a cold block pays one buffer, not two.
+        output.write_str(&html)?;
+
         {
             let mut guard = self.cache.lock().unwrap();
             let state = &mut *guard;
@@ -269,13 +273,13 @@ impl SyntaxHighlighterAdapter for CachedAdapter {
                         lang: lang.map(str::to_string),
                         code: code.to_string(),
                     },
-                    html: html.clone(),
+                    html,
                     last_used: 0,
                 },
             );
         }
 
-        output.write_str(&html)
+        Ok(())
     }
 
     /// `<pre>` opener, carrying comrak's attributes plus the theme background

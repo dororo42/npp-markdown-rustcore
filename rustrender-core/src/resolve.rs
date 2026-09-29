@@ -59,10 +59,15 @@ pub fn resolve_url(base: &Path, url: &str) -> String {
         }
     }
 
-    // Split fragment before joining.
+    // Split fragment (and query, which has no meaning for a local file and
+    // would 404 on the host's virtual-host lookup) before joining.
     let (path_part, fragment) = match raw_norm.find('#') {
         Some(i) => (&raw_norm[..i], Some(&raw_norm[i + 1..])),
         None => (raw_norm.as_str(), None),
+    };
+    let path_part = match path_part.find('?') {
+        Some(i) => &path_part[..i],
+        None => path_part,
     };
     if path_part.is_empty() {
         return url.to_string();
@@ -213,6 +218,22 @@ mod tests {
     #[test]
     fn fragment_preserved() {
         assert_eq!(r("C:/docs", "doc.md#intro"), "file:///C:/docs/doc.md#intro");
+    }
+
+    #[test]
+    fn query_stripped_for_local_resolution() {
+        // A query string has no meaning on disk and would 404 the host's
+        // virtual-host lookup; it must be dropped, the fragment kept.
+        assert_eq!(r("C:/docs", "img.png?v=1"), "file:///C:/docs/img.png");
+        assert_eq!(
+            r("C:/docs", "doc.md?q=1#intro"),
+            "file:///C:/docs/doc.md#intro"
+        );
+        // Remote URLs keep their query untouched (passthrough path).
+        assert_eq!(
+            r("C:/docs", "https://x.io/a.png?v=1"),
+            "https://x.io/a.png?v=1"
+        );
     }
 
     #[test]

@@ -57,33 +57,39 @@ enum RenderOutcome {
     Panicked,
 }
 
-static WORKER_TX: OnceLock<mpsc::Sender<RenderJob>> = OnceLock::new();
+static WORKER_TX: OnceLock<Option<mpsc::Sender<RenderJob>>> = OnceLock::new();
 
 /// The persistent render worker handle (spawned lazily on first render).
 /// Panics are contained per job via `catch_unwind`, so one hostile document
 /// cannot take the worker down. A true stack overflow still aborts the
 /// process — that property is unchanged from the per-render-thread design.
-fn worker() -> &'static mpsc::Sender<RenderJob> {
-    WORKER_TX.get_or_init(|| {
-        let (tx, rx) = mpsc::channel::<RenderJob>();
-        std::thread::Builder::new()
-            .stack_size(RENDER_STACK_SIZE)
-            .name("rustrender-worker".to_string())
-            .spawn(move || {
-                for job in rx {
-                    let outcome = match catch_unwind(AssertUnwindSafe(|| {
-                        core_render(&job.md, job.cwd.as_deref(), &job.opts)
-                    })) {
-                        Ok(Ok(output)) => RenderOutcome::Done(output),
-                        Ok(Err(_)) => RenderOutcome::Failed,
-                        Err(_) => RenderOutcome::Panicked,
-                    };
-                    let _ = job.tx.send(outcome);
-                }
-            })
-            .expect("spawn rustrender worker");
-        tx
-    })
+///
+/// `None` means thread creation failed; the FFI surface then reports
+/// RC_PANIC instead of aborting the host process.
+fn worker() -> Option<&'static mpsc::Sender<RenderJob>> {
+    WORKER_TX
+        .get_or_init(|| {
+            let (tx, rx) = mpsc::channel::<RenderJob>();
+            std::thread::Builder::new()
+                .stack_size(RENDER_STACK_SIZE)
+                .name("rustrender-worker".to_string())
+                .spawn(move || {
+                    for job in rx {
+                        let outcome = match catch_unwind(AssertUnwindSafe(|| {
+                            core_render(&job.md, job.cwd.as_deref(), &job.opts)
+                        })) {
+                            Ok(Ok(output)) => RenderOutcome::Done(output),
+                            Ok(Err(_)) => RenderOutcome::Failed,
+                            Err(_) => RenderOutcome::Panicked,
+                        };
+                        let _ = job.tx.send(outcome);
+                    }
+                })
+                .map(|_| tx)
+                .map_err(|_| ())
+                .ok()
+        })
+        .as_ref()
 }
 
 /// Build metadata, exposed for diagnostics (shown in the plugin About box).
@@ -144,7 +150,12 @@ pub unsafe extern "C" fn render_markdown(
     // The blocking wait is bounded by the render itself; the caller (a
     // .NET ThreadPool thread) is free while this runs.
     let (tx, rx) = mpsc::channel();
-    if worker()
+    let worker_tx = match worker() {
+        Some(w) => w,
+        // Worker thread could not be created — contained failure, no abort.
+        None => return RC_PANIC,
+    };
+    if worker_tx
         .send(RenderJob {
             md: md.to_string(),
             cwd,

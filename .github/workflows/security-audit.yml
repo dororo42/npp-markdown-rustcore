@@ -1,0 +1,27 @@
+name: security-audit
+
+# R-9 (v1.2.7): the core exposes comrak/ammonia/syntect/url directly to
+# untrusted document input — dependency advisories are monitored on every
+# change and daily, so a new CVE surfaces without a code change.
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  schedule:
+    - cron: "0 3 * * *"
+  workflow_dispatch:
+
+jobs:
+  cargo-audit:
+    name: cargo audit (Rust dependency advisories)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install cargo-audit
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-audit
+
+      - name: Run cargo audit
+        run: cargo audit
