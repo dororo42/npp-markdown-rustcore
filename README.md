@@ -26,7 +26,7 @@
 - **安全净化**：ammonia 白名单（默认禁 `data:`/`javascript:`，保留 syntect 受控内联样式）
 - **滚动同步锚点**：全块级 `data-line` + 标题 `data-src-line`（与上游 Webview2 控件契约兼容）；光标位于多行块内部时回退最近前驱块，不再静默失联
 - **双向同步滚动**：开启「Synchronize preview scroll to editor」后，在预览面板滚动时编辑器跟随定位到对应源码块（块级粒度，反向只动 first-visible-line 不动光标；自带回声抑制，可与前向同步同时开启；ini `Options → SyncPreviewToEditor`）；mermaid 图块保留 `data-line` 锚点
-- **外链防劫持**：预览中的外部链接一律转交系统浏览器打开，面板内绝不导航外部页面；渲染链失败时显示错误卡片而非静默停更
+- **外链防劫持（v1.2.7 收紧为白名单）**：仅 http(s)/mailto 外链转交系统浏览器，本地 `file:` 链接转交 Notepad++ 打开，其余一律取消——面板内绝不导航外部页面、绝不经点击启动本地程序；渲染链失败时显示错误卡片而非静默停更
 - **崩溃隔离**：FFI 边界 `catch_unwind` + 512MB 大栈渲染线程，恶意文档最多返回错误码
 - **双出口**：同一核心编译为 Windows 原生 DLL（路线 A'）或 WASM（路线 C 实验）
 
@@ -121,6 +121,7 @@
 - 打开 `.html`/`.htm` 源码文件时预览面板直接按网页渲染（含完整文档骨架的文件原样呈现，HTML 片段套轻量模板），`<img>`/`<script>`/`<link>` 的本地相对引用自动按源文件目录解析。
 - 开关：ini `Options → HtmlSourcePreview`（默认 `true`）；关闭后 `.html/.htm` 回到"非 Markdown 扩展名"提示。
 - ⚠️ **安全提示**：HTML 源码预览不做净化（否则 `<style>`/`<script>` 会被剥除、失去"预览网页"意义）——文档内的脚本会执行，与用浏览器打开该文件等价。请勿预览不可信来源的 HTML 文件。
+- 🛡️ **v1.2.7 隔离加固**：此类页面渲染期间宿主桥（复选框/单选/滚动回报）与注入脚本全部断开，其脚本无法再经 postMessage 驱动编辑器；虚拟主机映射同时收紧为 `DenyCors`（`<img>`/CSS 等非 CORS 资源照常加载，页面脚本不能再 fetch 目录内任意文件）。
 - 已知边界：滚动同步/大纲/任务列表回调为 Markdown 专属，HTML 文档不适用；IE11 引擎按 IE 文档模式降级渲染。
 
 ## 📁 项目结构
@@ -342,6 +343,23 @@ const char* rustrender_version(void);
 
 - IE11 引擎外链策略补齐：http(s) 外链取消面板内导航并转交系统浏览器（此前仅 WebView2 引擎实现，IE11 下外链会劫持预览视图）。
 - 导出入口空渲染守卫：预览尚未完成首次渲染时点导出直接忽略，不再沿渲染链抛异常。
+
+### v1.2.7 更新（安全加固）
+
+**安全修复**
+
+- **外链执行链关闭（WebView2 + IE11 双引擎）**：WebView2 的导航兜底分支原先对一切未匹配 URI `ShellExecute`——普通 Markdown 链接 `[x](file:///C:/.../calc.exe)` 点击即启动本地程序（`ms-msdt:`/`search-ms:` 等协议处理器同理）。现反转为白名单：仅 http(s)/mailto 转交系统浏览器，本地 `file:` 链接与 WebView2 虚拟主机一致转交 Notepad++ 打开，其余一律取消。IE11 引擎对 `file:` 链接不再在面板内导航（同样转交 Notepad++），未知 scheme 默认拒绝。
+- **HTML 源码预览隔离**（功能默认值不变，行为加固）：宿主桥门控 `WebBridgeEnabled`——第三方 HTML 页面渲染期间不再注入复选框/滚动脚本，其 postMessage 全部被忽略，页面脚本无法伪造 `checkboxToggle` 改写编辑器文本或驱动滚动；虚拟主机映射 `Allow` → `DenyCors`（`<img>`/CSS 照常，fetch/XHR 读目录文件被拒）；WebView2 DevTools 关闭。
+
+**改进**
+
+- **导出不再冻结 UI（R-4）**：`LocalImages` 模式的远程图下载由 UI 线程 sync-over-async（最长阻塞 45s）改为全异步链（`await Task.Run`），下载按源 URL 去重（同一远程图多次引用只下载一次）；自动落盘同样 fire-and-forget 异步化。
+- **渲染缓存字节上限（R-6）**：C# 侧 LRU 在容量 4 之外增加 64MB 总量兜底（UTF-16 计量），超大文档不再放大出数百 MB 缓存。
+- **核心契约收敛（R-5/R-7/R-8）**：WASM 出口收敛为单一 `From` 映射并补齐 `highlight_theme` 字段；路径解析剥离无意义 query（`img.png?v=1` 不再在虚拟主机侧 404）；FFI worker 线程创建失败改为返回错误码（不再可能 abort 宿主）；高亮缓存插入去 clone；HttpClient UA 版本改取程序集版本（消除 1.2.5 硬编码漂移）。
+
+**工程**
+
+- CI 新增 `security-audit` 工作流（`cargo audit`，每次 push/PR + 每日定时）；`build.yml` 新增 WASM 出口构建任务（wasm32 编译 + wasm-bindgen 绑定生成，CLI 锁定 Cargo.lock 版本）。
 
 ---
 
