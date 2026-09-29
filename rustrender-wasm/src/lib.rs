@@ -9,8 +9,9 @@
 //! Build:
 //! ```sh
 //! cargo build -p rustrender-wasm --target wasm32-unknown-unknown --release
+//! # input = the raw cdylib artifact; `..._bg.wasm` is wasm-bindgen's OUTPUT name
 //! wasm-bindgen --target web --out-dir web/bindings \
-//!   target/wasm32-unknown-unknown/release/rustrender_wasm_bg.wasm
+//!   target/wasm32-unknown-unknown/release/rustrender_wasm.wasm
 //! ```
 
 use serde::{Deserialize, Serialize};
