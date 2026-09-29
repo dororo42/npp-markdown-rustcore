@@ -52,6 +52,14 @@ namespace Webview2Viewer
         private bool currentPageHasOutline;
         private bool forceFullReload;
 
+        /// <summary>
+        /// Host↔page bridge gate (checkbox/radio/scroll callbacks + the
+        /// injected scripts that feed them). The host clears this before
+        /// rendering foreign HTML (source preview) so outside scripts can
+        /// neither install the handlers nor be honored via postMessage.
+        /// </summary>
+        public bool WebBridgeEnabled { get; set; }
+
         private Action<string> openLocalFileInNppAction;
 
         private CoreWebView2Environment environment = null;
@@ -161,6 +169,9 @@ namespace Webview2Viewer
             if (e.IsSuccess)
             {
                 webViewInitialized = true;
+                // Preview hardening (v1.2.7): the docked panel never needs
+                // dev tools; right-click Inspect would expose the bridge.
+                webView.CoreWebView2.Settings.AreDevToolsEnabled = false;
                 if (AfterInitCompletedAction != null) AfterInitCompletedAction();
             }
             else
@@ -190,17 +201,23 @@ namespace Webview2Viewer
 
             if (e.IsSuccess)
             {
-                ExecuteWebviewAction(new Action(async () =>
+                // Bridge scripts are only installed on our own preview pages
+                // (WebBridgeEnabled). Foreign HTML documents (source preview)
+                // must not get the checkbox/radio/scroll handlers — their
+                // scripts would be able to drive the host via postMessage.
+                if (WebBridgeEnabled)
                 {
-                    // inject JS to listen to the "Scrollend"/"Scroll" events
-                    // (bidirectional sync): anchor topology cache (W3) built
-                    // once per render and rebuilt debounced on DOM mutation;
-                    // top block resolved by binary search over cached page
-                    // offsets (W2: measured content-start threshold, top-of-
-                    // page boundary reports the first anchor); continuous
-                    // follow via rAF-throttled scroll listener (W4) plus the
-                    // scrollend precise report.
-                    string jsScript = @"
+                    ExecuteWebviewAction(new Action(async () =>
+                    {
+                        // inject JS to listen to the "Scrollend"/"Scroll" events
+                        // (bidirectional sync): anchor topology cache (W3) built
+                        // once per render and rebuilt debounced on DOM mutation;
+                        // top block resolved by binary search over cached page
+                        // offsets (W2: measured content-start threshold, top-of-
+                        // page boundary reports the first anchor); continuous
+                        // follow via rAF-throttled scroll listener (W4) plus the
+                        // scrollend precise report.
+                        string jsScript = @"
 
                                 (function() {
                                     var cache = [];
@@ -278,18 +295,19 @@ namespace Webview2Viewer
                                     }
                                 })();
                             ";
-                    await webView.ExecuteScriptAsync(jsScript);
-                }));
+                        await webView.ExecuteScriptAsync(jsScript);
+                    }));
 
-                ExecuteWebviewAction(new Action(async () =>
-                {
-                    await webView.ExecuteScriptAsync(checkboxToggleScript);
-                }));
+                    ExecuteWebviewAction(new Action(async () =>
+                    {
+                        await webView.ExecuteScriptAsync(checkboxToggleScript);
+                    }));
 
-                ExecuteWebviewAction(new Action(async () =>
-                {
-                    await webView.ExecuteScriptAsync(radioToggleScript);
-                }));
+                    ExecuteWebviewAction(new Action(async () =>
+                    {
+                        await webView.ExecuteScriptAsync(radioToggleScript);
+                    }));
+                }
 
                 blockScrollUpdates = false;
             }
@@ -414,7 +432,10 @@ namespace Webview2Viewer
             {
                 ExecuteWebviewAction(new Action(() =>
                 {
-                    webView.CoreWebView2.SetVirtualHostNameToFolderMapping(virtualHostName, currentPath, CoreWebView2HostResourceAccessKind.Allow);
+                    // DenyCors (v1.2.7): non-CORS loads (<img>, <script>, CSS)
+                    // keep working, but scripts on the page can no longer
+                    // fetch()/XHR arbitrary files out of the mapped folder.
+                    webView.CoreWebView2.SetVirtualHostNameToFolderMapping(virtualHostName, currentPath, CoreWebView2HostResourceAccessKind.DenyCors);
                 }));
                 this.currentDocumentPath = currentDocumentPath;
                 fullReload = true;
@@ -447,8 +468,13 @@ namespace Webview2Viewer
                             // failure keeps the styled code block as-is).
                             "if(typeof mermaid!=='undefined'){document.querySelectorAll('pre > code.language-mermaid').forEach(function(el){var h=document.createElement('div');h.className='mermaid';var p=el.closest('pre');var ln=p?p.getAttribute('data-line'):null;if(ln)h.setAttribute('data-line',ln);h.textContent=el.textContent;if(p){p.replaceWith(h);}else{el.replaceWith(h);}});mermaid.run();}"
                         );
-                        await webView.ExecuteScriptAsync(checkboxToggleScript);
-                        await webView.ExecuteScriptAsync(radioToggleScript);
+                        // Same gate as NavigationCompleted: foreign HTML pages
+                        // (source preview) must not receive the bridge scripts.
+                        if (WebBridgeEnabled)
+                        {
+                            await webView.ExecuteScriptAsync(checkboxToggleScript);
+                            await webView.ExecuteScriptAsync(radioToggleScript);
+                        }
                     }));
                 }
                 if (currentStyle != style)
@@ -511,7 +537,7 @@ namespace Webview2Viewer
             catch (IOException) { }
 
             webView.CoreWebView2.SetVirtualHostNameToFolderMapping(
-                tmpVirtualHostName, tmpHtmlDir, CoreWebView2HostResourceAccessKind.Allow);
+                tmpVirtualHostName, tmpHtmlDir, CoreWebView2HostResourceAccessKind.DenyCors);
             webView.CoreWebView2.Navigate("http://" + tmpVirtualHostName + "/" + fileName);
         }
 
@@ -576,15 +602,28 @@ namespace Webview2Viewer
                 // user would be stuck with a hijacked view (no address bar,
                 // no back button) and the postMessage bridge would be
                 // exposed to the foreign page's JS context. Cancel and hand
-                // it to the system browser instead.
+                // http(s)/mailto to the system browser.
+                //
+                // Allowlist, not blocklist (v1.2.7): the previous catch-all
+                // ShellExecute also fired for file:///C:/...*.exe (ammonia
+                // keeps `file` for local images, so such links render) and
+                // for OS protocol handlers like ms-msdt:/search-ms: — a
+                // plain Markdown link could launch local programs. Anything
+                // not on the allowlist is now cancelled without execution.
                 e.Cancel = true;
                 forceFullReload = true;
-                try
+                bool externalLaunchable = navUri.StartsWith("http://", StringComparison.OrdinalIgnoreCase)
+                    || navUri.StartsWith("https://", StringComparison.OrdinalIgnoreCase)
+                    || navUri.StartsWith("mailto:", StringComparison.OrdinalIgnoreCase);
+                if (externalLaunchable)
                 {
-                    using (System.Diagnostics.Process.Start(
-                        new System.Diagnostics.ProcessStartInfo(navUri) { UseShellExecute = true })) { }
+                    try
+                    {
+                        using (System.Diagnostics.Process.Start(
+                            new System.Diagnostics.ProcessStartInfo(navUri) { UseShellExecute = true })) { }
+                    }
+                    catch (Exception) { }
                 }
-                catch (Exception) { }
             }
         }
 
@@ -616,6 +655,12 @@ namespace Webview2Viewer
 
         private void WebView_WebMessageReceived(object sender, CoreWebView2WebMessageReceivedEventArgs e)
         {
+            // Bridge gate (v1.2.7): messages are only honored for our own
+            // preview pages. While a foreign HTML document (source preview)
+            // is displayed, its scripts must not be able to drive checkbox/
+            // radio edits or the editor scroll through this channel.
+            if (!WebBridgeEnabled) return;
+
             string message = e.TryGetWebMessageAsString();
 
             var splittedParams = message.Split(';');
@@ -692,7 +737,10 @@ namespace Webview2Viewer
 
         public void CurrentDocumentRenamed(string newDocumentPath)
         {
-            if (scrollYForFilename.ContainsKey(currentDocumentPath))
+            // currentDocumentPath is null until the first SetContent; a
+            // rename arriving before that must not throw on the null key.
+            if (!string.IsNullOrEmpty(currentDocumentPath)
+                && scrollYForFilename.ContainsKey(currentDocumentPath))
             {
                 scrollYForFilename.Add(newDocumentPath, scrollYForFilename[currentDocumentPath]);
                 scrollYForFilename.Remove(currentDocumentPath);

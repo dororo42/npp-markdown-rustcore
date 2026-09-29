@@ -27,6 +27,10 @@ namespace NppMarkdownPanel.Webbrowser
         // keeps the property for interface parity and never reports.
         public Action<int, bool> PreviewScrollAction { get; set; }
 
+        // The IE11 route has no host↔page message bridge (toggles are not
+        // implemented here), so the gate exists for interface parity only.
+        public bool WebBridgeEnabled { get; set; }
+
         private Action<string> openLocalFileInNppAction;
 
         bool webViewInitialized = false;
@@ -205,6 +209,27 @@ namespace NppMarkdownPanel.Webbrowser
                         element.Focus();
                         element.ScrollIntoView(true);
                     }
+                }
+                return;
+            }
+            // Default deny (v1.2.7): previously any non-http(s)/about:blank
+            // URL (e.g. file:///…) fell through and navigated the panel.
+            // Local file links open in Notepad++ like the WebView2 virtual
+            // host does; everything else is cancelled without execution.
+            e.Cancel = true;
+            if (url.StartsWith("file://", StringComparison.OrdinalIgnoreCase))
+            {
+                try
+                {
+                    var localUri = new Uri(url);
+                    var localPath = localUri.LocalPath;
+                    if (openLocalFileInNppAction != null && !string.IsNullOrEmpty(localPath))
+                    {
+                        openLocalFileInNppAction(localPath);
+                    }
+                }
+                catch (Exception)
+                {
                 }
             }
         }

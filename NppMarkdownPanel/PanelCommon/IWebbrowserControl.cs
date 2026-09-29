@@ -39,5 +39,14 @@ namespace PanelCommon
         void StopScrollPositionTracking();
 
         void ExportToPdf(string filePath);
+
+        /// <summary>
+        /// Gate for the host↔page message bridge (checkbox/radio/scroll
+        /// callbacks) and the injected bridge scripts. Must be set to
+        /// <c>false</c> before rendering foreign HTML documents (HTML source
+        /// preview): their scripts must neither install the bridge handlers
+        /// nor have their postMessage traffic honored by the host.
+        /// </summary>
+        bool WebBridgeEnabled { get; set; }
     }
 }

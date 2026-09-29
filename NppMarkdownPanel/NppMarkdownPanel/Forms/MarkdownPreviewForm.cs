@@ -141,6 +141,12 @@ OUTLINE_SCRIPT_PLACEHOLDER
 
         // 渲染缓存 (LRU, 容量 4): 切换回未修改的文档时直接命中, 不再全量重渲染。
         private const int RenderCacheCapacity = 4;
+        // v1.2.7 (R-6): 字节上限兜底。RenderResult 同时持有 browser/export/
+        // body/style 四份大字符串，纯条数上限在超大文档下内存放大不受控
+        // （UTF-16 ≈ 2B/字符）；单个超限结果仍保留（与 Rust 侧高亮缓存的
+        // 逐空放行语义一致）。
+        private const long RenderCacheMaxBytes = 64 * 1024 * 1024;
+        private long renderCacheBytes;
         private readonly LinkedList<RenderCacheEntry> renderCacheLru = new LinkedList<RenderCacheEntry>();
         private readonly Dictionary<RenderCacheKey, LinkedListNode<RenderCacheEntry>> renderCacheMap = new Dictionary<RenderCacheKey, LinkedListNode<RenderCacheEntry>>();
         private string currentMarkdownText;
@@ -331,7 +337,7 @@ OUTLINE_SCRIPT_PLACEHOLDER
                 return cached;
 
             // v1.1: HTML 源码文件 — 跳过 Markdown 管线，按网页直通预览。
-            if (settings.HtmlSourcePreview && IsHtmlSourceFile(filepath))
+            if (IsForeignHtmlPreview(filepath))
             {
                 var htmlResult = RenderHtmlSourcePreview(currentText, filepath);
                 StoreCachedRender(cacheKey, htmlResult);
@@ -401,6 +407,15 @@ OUTLINE_SCRIPT_PLACEHOLDER
         {
             var ext = (Path.GetExtension(filepath) ?? "").ToLowerInvariant();
             return ext == ".html" || ext == ".htm";
+        }
+
+        /// <summary>
+        /// v1.2.7 (R-3): 以 HTML 源码直通模式渲染的文档 = 面板内运行第三方
+        /// 脚本。此类页面渲染时宿主桥（WebBridgeEnabled）必须断开。
+        /// </summary>
+        private bool IsForeignHtmlPreview(string filepath)
+        {
+            return settings.HtmlSourcePreview && IsHtmlSourceFile(filepath);
         }
 
         /// <summary>
@@ -527,6 +542,14 @@ OUTLINE_SCRIPT_PLACEHOLDER
                             return;
                         }
 
+                        // v1.2.7 (R-3): gate the host↔page bridge for the
+                        // page about to be displayed. Foreign HTML documents
+                        // (source preview) run their own scripts — they must
+                        // neither install the bridge handlers nor drive the
+                        // host via postMessage. The gate follows the *task's*
+                        // filepath (the content being displayed), not the
+                        // possibly-already-switched currentFilePath.
+                        webbrowserControl.WebBridgeEnabled = !IsForeignHtmlPreview(filepath);
                         webbrowserControl.SetContent(renderedText.Result.ResultForBrowser, renderedText.Result.ResultBody, renderedText.Result.ResultStyle, currentFilePath);
                         htmlContentForExport = renderedText.Result.ResultForExport;
                         currentMarkdownText = currentText;
@@ -536,7 +559,10 @@ OUTLINE_SCRIPT_PLACEHOLDER
                             if (valid)
                             {
                                 settings.HtmlFileName = fullPath;
-                                writeHtmlContentToFile(settings.HtmlFileName);
+                                // v1.2.7 (R-4): 异步自动落盘 —— 大文件的渲染 +
+                                // 写盘不再占住 render continuation 所在的 UI
+                                // 线程；异常按旧行为静默（不阻断预览链）。
+                                AutoExportToFileAsync(settings.HtmlFileName);
                             }
                         }
                         webbrowserControl.SetZoomLevel(settings.ZoomLevel);
@@ -574,6 +600,9 @@ OUTLINE_SCRIPT_PLACEHOLDER
             var doc = "<!DOCTYPE html><html><head><meta http-equiv=\"content-type\" content=\"text/html; charset=utf-8\">" +
                       "<style type=\"text/css\" id=\"md-preview-style\">" + cardStyle + "</style>" +
                       "</head><body class=\"markdown-body\">" + body + "</body></html>";
+            // 错误卡片是插件自身内容, 桥恢复开启 (外部 HTML 页可能仍在加载中,
+            // 门控使它们的 postMessage 全部被忽略)。
+            webbrowserControl.WebBridgeEnabled = true;
             webbrowserControl.SetContent(doc, body, cardStyle, currentFilePath);
         }
 
@@ -636,7 +665,7 @@ OUTLINE_SCRIPT_PLACEHOLDER
             ShowSaveAs(false, HtmlExportMode.LocalImages);
         }
 
-        private void ShowSaveAs(bool overrideLightTheme, HtmlExportMode mode = HtmlExportMode.Plain)
+        private async void ShowSaveAs(bool overrideLightTheme, HtmlExportMode mode = HtmlExportMode.Plain)
         {
             using (SaveFileDialog saveFileDialog = new SaveFileDialog())
             {
@@ -648,7 +677,10 @@ OUTLINE_SCRIPT_PLACEHOLDER
                 {
                     try
                     {
-                        writeHtmlContentToFile(saveFileDialog.FileName, overrideLightTheme, mode);
+                        // v1.2.7 (R-4): 导出整链异步执行 —— 远程图下载（原
+                        // sync-over-async 在 UI 线程最长阻塞 45s）不再冻结
+                        // Notepad++；失败仍以对话框告知。
+                        await WriteHtmlContentToFileAsync(saveFileDialog.FileName, overrideLightTheme, mode);
                     }
                     catch (Exception ex)
                     {
@@ -668,9 +700,15 @@ OUTLINE_SCRIPT_PLACEHOLDER
             ShowSaveAs(false, mode);
         }
 
-        private void writeHtmlContentToFile(string filename, bool overrideLightTheme = false, HtmlExportMode mode = HtmlExportMode.Plain)
+        /// <summary>
+        /// v1.2.7 (R-4) 异步导出：惰性渲染 + 图片内嵌/下载 + 落盘全部在
+        /// 线程池执行（await Task.Run），UI 线程全程不被阻塞。
+        /// </summary>
+        private async Task WriteHtmlContentToFileAsync(string filename, bool overrideLightTheme = false, HtmlExportMode mode = HtmlExportMode.Plain)
         {
-            if (!string.IsNullOrEmpty(filename))
+            if (string.IsNullOrEmpty(filename))
+                return;
+            await Task.Run(async () =>
             {
                 // 导出版一律按需生成：暗色版通常已随预览算好（配置了自动落盘时），
                 // 亮色版必须以亮色 options 单独渲染（不能复用暗色 body）。
@@ -683,10 +721,26 @@ OUTLINE_SCRIPT_PLACEHOLDER
                         html = EmbedLocalImages(html);
                         break;
                     case HtmlExportMode.LocalImages:
-                        html = CopyImagesToLocalFolder(html, filename);
+                        html = await CopyImagesToLocalFolderAsync(html, filename);
                         break;
                 }
                 File.WriteAllText(filename, html);
+            });
+        }
+
+        /// <summary>
+        /// v1.2.7 (R-4): 配置了 HtmlFileName 时的自动落盘。fire-and-forget
+        /// 异步执行；异常静默 —— 与旧行为一致（原同步调用就包在
+        /// continuation 的整层 try/catch 里，失败不阻断预览链）。
+        /// </summary>
+        private async void AutoExportToFileAsync(string filename)
+        {
+            try
+            {
+                await WriteHtmlContentToFileAsync(filename);
+            }
+            catch (Exception)
+            {
             }
         }
 
@@ -700,8 +754,12 @@ OUTLINE_SCRIPT_PLACEHOLDER
         private static readonly System.Net.Http.HttpClient Http = new System.Net.Http.HttpClient()
         {
             Timeout = TimeSpan.FromSeconds(30),
-            // honest UA: several image CDNs reject UA-less requests
-            DefaultRequestHeaders = { UserAgent = { new System.Net.Http.Headers.ProductInfoHeaderValue("npp-markdown-rustcore", "1.2.5") } },
+            // honest UA: several image CDNs reject UA-less requests.
+            // v1.2.7 (R-8): version tracks the plugin assembly — the hardcoded
+            // "1.2.5" had already drifted from the workspace version.
+            DefaultRequestHeaders = { UserAgent = { new System.Net.Http.Headers.ProductInfoHeaderValue(
+                "npp-markdown-rustcore",
+                typeof(MarkdownPreviewForm).Assembly.GetName().Version.ToString(3)) } },
         };
 
         // comrak 输出的 <img> 恒为双引号属性; 仅匹配本地可内嵌的 src。
@@ -785,8 +843,11 @@ OUTLINE_SCRIPT_PLACEHOLDER
         /// friendly. Same-name same-content reuses the file; same-name different-content
         /// appends -1/-2 (first-occurrence order). Remote/data: refs and read failures
         /// keep the original src (consistent with the base64 mode).
+        /// v1.2.7 (R-4): restructured into an async download pass (unique remote
+        /// srcs downloaded once, awaited — was sync-over-async on the UI thread)
+        /// followed by the synchronous rewrite pass with the original conflict rules.
         /// </summary>
-        private string CopyImagesToLocalFolder(string html, string exportHtmlPath)
+        private async Task<string> CopyImagesToLocalFolderAsync(string html, string exportHtmlPath)
         {
             if (string.IsNullOrEmpty(html) || string.IsNullOrEmpty(currentFilePath))
                 return html;
@@ -795,31 +856,39 @@ OUTLINE_SCRIPT_PLACEHOLDER
             if (string.IsNullOrEmpty(baseDir) || string.IsNullOrEmpty(exportDir))
                 return html;
 
-            // source absolute path -> final file name in the export folder
-            var assigned = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-
-            // v1.2.5: bound the worst-case UI freeze - stop fetching remote
+            // v1.2.5: bound the worst-case stall - stop fetching remote
             // images after 45s total; remaining remote refs keep their links.
             var remoteSw = System.Diagnostics.Stopwatch.StartNew();
             var remoteBudget = TimeSpan.FromSeconds(45);
+
+            // Pass 1 (awaited): download each unique remote http(s) src once.
+            // Failure keeps the original reference (silent degradation, same
+            // semantics as the local-file paths).
+            var downloaded = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            foreach (Match m in ImgSrcRegex.Matches(html))
+            {
+                var src = m.Groups["src"].Value;
+                if (!IsRemoteHttpSrc(src) || downloaded.ContainsKey(src))
+                    continue;
+                if (remoteSw.Elapsed > remoteBudget)
+                    break;
+                var localPath = await TryDownloadRemoteImageAsync(src, exportDir);
+                if (localPath != null)
+                    downloaded[src] = localPath;
+            }
+
+            // Pass 2 (sync): rewrite srcs to file names. Downloaded files are
+            // named by the same dash-sequence conflict rules as local files.
+            // source absolute path -> final file name in the export folder
+            var assigned = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
             return ImgSrcRegex.Replace(html, match =>
             {
                 var src = match.Groups["src"].Value;
                 var localPath = ResolveLocalImagePath(src, baseDir);
-                if (localPath == null)
+                if (localPath == null && !downloaded.TryGetValue(src, out localPath))
                 {
-                    // v1.2.4: remote http(s) image - download it next to the HTML
-                    // (browser save-as-web-page semantics). Failure keeps the
-                    // original reference (silent degradation). TryDownloadRemoteImage
-                    // writes a temp file; the normal rename rules below move it into
-                    // the export folder and rewrite src.
-                    if (remoteSw.Elapsed > remoteBudget)
-                        return match.Value;
-                    var downloaded = TryDownloadRemoteImage(src, exportDir);
-                    if (downloaded == null)
-                        return match.Value;
-                    localPath = downloaded;
+                    return match.Value;
                 }
                 try
                 {
@@ -859,20 +928,23 @@ OUTLINE_SCRIPT_PLACEHOLDER
             });
         }
 
+        private static bool IsRemoteHttpSrc(string src)
+        {
+            if (string.IsNullOrWhiteSpace(src)) return false;
+            return src.StartsWith("http://", StringComparison.OrdinalIgnoreCase)
+                || src.StartsWith("https://", StringComparison.OrdinalIgnoreCase);
+        }
+
         /// <summary>
         /// Download a remote http(s) image directly into the export folder.
         /// Returns the target path on success, null on timeout/HTTP error/oversize
         /// (16MB cap) - the caller then keeps the original reference. The file name
-        /// is derived from the URL path and de-conflicted by the normal dash-sequence
-        /// rules of the caller.
+        /// is derived from the URL path and de-conflicted by dash-sequence rules.
+        /// v1.2.7 (R-4): fully async (was GetAwaiter().GetResult() on the UI thread).
         /// </summary>
-        private string TryDownloadRemoteImage(string src, string exportDir)
+        private async Task<string> TryDownloadRemoteImageAsync(string src, string exportDir)
         {
-            if (string.IsNullOrWhiteSpace(src)) return null;
-            var httpPrefix = "http://";
-            var httpsPrefix = "https://";
-            if (!src.StartsWith(httpPrefix, StringComparison.OrdinalIgnoreCase) &&
-                !src.StartsWith(httpsPrefix, StringComparison.OrdinalIgnoreCase)) return null;
+            if (!IsRemoteHttpSrc(src)) return null;
             try
             {
                 var qm = "?";
@@ -894,10 +966,10 @@ OUTLINE_SCRIPT_PLACEHOLDER
                     seq++;
                 }
                 using (var cts = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(15)))
-                using (var resp = Http.GetAsync(src, cts.Token).GetAwaiter().GetResult())
+                using (var resp = await Http.GetAsync(src, cts.Token))
                 {
                     if (!resp.IsSuccessStatusCode) return null;
-                    var bytes = resp.Content.ReadAsByteArrayAsync().GetAwaiter().GetResult();
+                    var bytes = await resp.Content.ReadAsByteArrayAsync();
                     if (bytes.Length == 0 || bytes.Length > MaxEmbedImageBytes) return null;
                     File.WriteAllBytes(targetPath, bytes);
                     return targetPath;
@@ -1102,6 +1174,16 @@ OUTLINE_SCRIPT_PLACEHOLDER
         {
             public RenderCacheKey Key;
             public RenderResult Result;
+            /// <summary>Approximate UTF-16 memory of the held strings (2B/char).</summary>
+            public long SizeBytes;
+        }
+
+        private static long EstimateResultBytes(RenderResult r)
+        {
+            return ((r.ResultForBrowser != null ? r.ResultForBrowser.Length : 0)
+                  + (r.ResultForExport != null ? r.ResultForExport.Length : 0)
+                  + (r.ResultBody != null ? r.ResultBody.Length : 0)
+                  + (r.ResultStyle != null ? r.ResultStyle.Length : 0)) * 2L;
         }
 
         private RenderResult TryGetCachedRender(RenderCacheKey key)
@@ -1125,15 +1207,26 @@ OUTLINE_SCRIPT_PLACEHOLDER
                 {
                     renderCacheLru.Remove(existing);
                     renderCacheMap.Remove(key);
+                    renderCacheBytes -= existing.Value.SizeBytes;
                 }
-                var node = new LinkedListNode<RenderCacheEntry>(new RenderCacheEntry { Key = key, Result = result });
+                var node = new LinkedListNode<RenderCacheEntry>(new RenderCacheEntry
+                {
+                    Key = key,
+                    Result = result,
+                    SizeBytes = EstimateResultBytes(result),
+                });
                 renderCacheLru.AddFirst(node);
                 renderCacheMap[key] = node;
-                while (renderCacheLru.Count > RenderCacheCapacity)
+                renderCacheBytes += node.Value.SizeBytes;
+                // 条数与字节双上限，逐出最久未用项；Count > 1 保证刚插入的
+                // 超大结果自身不被逐出。
+                while (renderCacheLru.Count > RenderCacheCapacity
+                    || (renderCacheLru.Count > 1 && renderCacheBytes > RenderCacheMaxBytes))
                 {
                     var last = renderCacheLru.Last;
                     renderCacheLru.RemoveLast();
                     renderCacheMap.Remove(last.Value.Key);
+                    renderCacheBytes -= last.Value.SizeBytes;
                 }
             }
         }
@@ -1144,6 +1237,7 @@ OUTLINE_SCRIPT_PLACEHOLDER
             {
                 renderCacheMap.Clear();
                 renderCacheLru.Clear();
+                renderCacheBytes = 0;
             }
         }
 
